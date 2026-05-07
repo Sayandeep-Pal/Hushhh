@@ -17,10 +17,12 @@ interface Message {
   timestamp: string;
 }
 
+import { handleError, getErrorMessage } from '../../../utils/error-handler';
+
 export default function ChatRoomScreen() {
   const { id, name } = useLocalSearchParams<{ id: string, name: string }>();
   const { user } = useAuth();
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
   const router = useRouter();
   
   const [messages, setMessages] = useState<Message[]>([]);
@@ -29,6 +31,7 @@ export default function ChatRoomScreen() {
   const [isLocked, setIsLocked] = useState(true);
   const [encryptionKey, setEncryptionKey] = useState<string | null>(null);
   const [showCodeModal, setShowCodeModal] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -39,6 +42,7 @@ export default function ChatRoomScreen() {
   }, [id, encryptionKey]);
 
   const fetchMessageHistory = async () => {
+    setIsRefreshing(true);
     try {
       const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
       const response = await axios.get(`${API_URL}/api/messages/${id}`);
@@ -65,6 +69,10 @@ export default function ChatRoomScreen() {
       setMessages(decryptedMessages);
     } catch (e) {
       console.error('Failed to fetch messages', e);
+      // We don't always want an Alert here as it can be annoying on every room entry
+      // But we should at least log it or show a small toast if needed.
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -151,27 +159,36 @@ export default function ChatRoomScreen() {
   };
 
   const sendMessage = () => {
-    if (!inputText || !encryptionKey || !socket) return;
-
-    const emojiPayload = encryptMessage(inputText, encryptionKey);
-    const messageData = {
-      roomId: id,
-      senderId: user?.id,
-      payload: emojiPayload
-    };
-
-    socket.emit('send_message', messageData);
+    if (!inputText || !encryptionKey) return;
     
-    // Add locally
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: user?.id!,
-      payload: emojiPayload,
-      text: inputText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => [...prev, newMessage]);
-    setInputText('');
+    if (!socket || !isConnected) {
+      Alert.alert('Connection Lost', 'You are currently offline. Please wait for reconnection.');
+      return;
+    }
+
+    try {
+      const emojiPayload = encryptMessage(inputText, encryptionKey);
+      const messageData = {
+        roomId: id,
+        senderId: user?.id,
+        payload: emojiPayload
+      };
+
+      socket.emit('send_message', messageData);
+      
+      // Add locally
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        senderId: user?.id!,
+        payload: emojiPayload,
+        text: inputText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, newMessage]);
+      setInputText('');
+    } catch (e) {
+      handleError(e, 'Transmission Failed');
+    }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
@@ -208,49 +225,56 @@ export default function ChatRoomScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>{name}</Text>
-          <Text style={styles.headerStatus}>{isLocked ? '🔒 Content Encrypted' : '🛡️ Secure Connection'}</Text>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
+          </TouchableOpacity>
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerName}>{name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.statusDot, { backgroundColor: isConnected ? '#4ECDC4' : '#FF6B6B' }]} />
+              <Text style={styles.headerStatus}>
+                {isConnected ? (isLocked ? 'Content Encrypted' : 'Secure Connection') : 'Connecting...'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => {
+            if (!isLocked) {
+              // Relock or change code
+              setIsLocked(true);
+              setEncryptionKey(null);
+              setSecretCode('');
+            }
+            setShowCodeModal(true);
+          }}>
+            <Ionicons 
+              name={isLocked ? "lock-closed" : "shield-checkmark"} 
+              size={24} 
+              color={isLocked ? "#FF6B6B" : "#4ECDC4"} 
+            />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => {
-          if (!isLocked) {
-            // Relock or change code
-            setIsLocked(true);
-            setEncryptionKey(null);
-            setSecretCode('');
-          }
-          setShowCodeModal(true);
-        }}>
-          <Ionicons 
-            name={isLocked ? "lock-closed" : "shield-checkmark"} 
-            size={24} 
-            color={isLocked ? "#FF6B6B" : "#4ECDC4"} 
-          />
-        </TouchableOpacity>
-      </View>
 
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.messageList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-      />
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.messageList}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+          onLayout={() => flatListRef.current?.scrollToEnd()}
+        />
 
-      {/* Input */}
-      {!isLocked && (
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
+        {/* InputArea */}
+        {!isLocked && (
           <View style={styles.inputArea}>
             <TextInput
               style={styles.input}
@@ -263,12 +287,15 @@ export default function ChatRoomScreen() {
               <Ionicons name="send" size={24} color="#FFF" />
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      )}
+        )}
+      </KeyboardAvoidingView>
 
       {/* Secret Code Modal */}
       <Modal visible={showCodeModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalEmoji}>🔒</Text>
             <Text style={styles.modalTitle}>Enter Secret Code</Text>
@@ -287,7 +314,7 @@ export default function ChatRoomScreen() {
               <Text style={styles.unlockButtonText}>Unlock Chat</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -319,6 +346,12 @@ const styles = StyleSheet.create({
   headerStatus: {
     fontSize: 12,
     color: '#666',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
   messageList: {
     padding: 20,

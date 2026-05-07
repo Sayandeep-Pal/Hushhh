@@ -10,8 +10,12 @@ import QRCode from 'react-native-qrcode-svg';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
+import { handleError, getErrorMessage } from '../../utils/error-handler';
+import { useSocket } from '@/context/SocketContext';
+
 export default function ChatListScreen() {
   const { user, profile, signOut } = useAuth();
+  const { isConnected } = useSocket();
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,7 +64,7 @@ export default function ChatListScreen() {
       });
     } catch (e) {
       console.error('Failed to connect via link', e);
-      Alert.alert('Connection Failed', 'The secret agent could not be found in the registry.');
+      handleError(e, 'Connection Failed');
     }
   };
 
@@ -86,6 +90,7 @@ export default function ChatListScreen() {
       setSearchResults(filtered);
     } catch (e) {
       console.error('Search failed', e);
+      // Fail silently to avoid interrupting user input
     } finally {
       setIsLoading(false);
     }
@@ -136,7 +141,10 @@ export default function ChatListScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Agent active</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.statusDot, { backgroundColor: isConnected ? '#4ECDC4' : '#FF6B6B' }]} />
+            <Text style={styles.greeting}>{isConnected ? 'Agent active' : 'Offline'}</Text>
+          </View>
           <Text style={styles.headerTitle}>{profile?.username || 'Anonymous'}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -247,6 +255,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 2,
     opacity: 0.5,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
   headerTitle: {
     fontSize: 32,

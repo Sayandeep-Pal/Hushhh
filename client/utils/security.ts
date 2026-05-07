@@ -13,22 +13,29 @@ const ZW = {
 /**
  * A set of emojis to use as carriers for the hidden message.
  */
-const CARRIERS = ['🔒', '🤫', '👻', '✨', '💎', '🛡️', '💬', '🕵️', '🤖', '🌟'];
+const CARRIERS = ['🔒'];
 
 /**
- * Encodes a string into zero-width characters.
+ * Encodes a string into zero-width characters (handling multi-byte UTF-8).
  */
 function encodeToZeroWidth(text: string): string {
-  return text
-    .split('')
-    .map((char) => {
-      const binary = char.charCodeAt(0).toString(2).padStart(8, '0');
-      return binary
-        .split('')
-        .map((bit) => (bit === '1' ? ZW.ONE : ZW.ZERO))
-        .join('');
-    })
-    .join('') + ZW.SEP;
+  // Convert string to UTF-8 bytes to handle multi-byte characters
+  const bytes = CryptoJS.enc.Utf8.parse(text);
+  const hex = bytes.toString(CryptoJS.enc.Hex);
+  
+  let zwResult = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    const byteHex = hex.substring(i, i + 2);
+    const byte = parseInt(byteHex, 16);
+    const binary = byte.toString(2).padStart(8, '0');
+    
+    zwResult += binary
+      .split('')
+      .map((bit) => (bit === '1' ? ZW.ONE : ZW.ZERO))
+      .join('');
+  }
+  
+  return zwResult + ZW.SEP;
 }
 
 /**
@@ -36,21 +43,28 @@ function encodeToZeroWidth(text: string): string {
  */
 function decodeFromZeroWidth(zwString: string): string {
   const cleanZW = zwString.split(ZW.SEP)[0];
-  let result = '';
+  let hexResult = '';
   
   for (let i = 0; i < cleanZW.length; i += 8) {
-    const byte = cleanZW.substring(i, i + 8);
-    if (byte.length < 8) break;
+    const byteBits = cleanZW.substring(i, i + 8);
+    if (byteBits.length < 8) break;
     
-    const binary = byte
+    const binary = byteBits
       .split('')
       .map((char) => (char === ZW.ONE ? '1' : '0'))
       .join('');
     
-    result += String.fromCharCode(parseInt(binary, 2));
+    const byte = parseInt(binary, 2);
+    hexResult += byte.toString(16).padStart(2, '0');
   }
   
-  return result;
+  try {
+    const bytes = CryptoJS.enc.Hex.parse(hexResult);
+    return bytes.toString(CryptoJS.enc.Utf8);
+  } catch (e) {
+    console.error('Zero-Width Decode Error:', e);
+    return '';
+  }
 }
 
 /**
