@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,13 +27,13 @@ export default function ChatRoomScreen() {
   const [inputText, setInputText] = useState('');
   const [secretCode, setSecretCode] = useState('');
   const [isLocked, setIsLocked] = useState(true);
-  const [encryptionKey, setEncryptionKey] = useState<Uint8Array | null>(null);
+  const [encryptionKey, setEncryptionKey] = useState<string | null>(null);
   const [showCodeModal, setShowCodeModal] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
-    if (id && encryptionKey) {
+    if (id) {
       fetchMessageHistory();
     }
   }, [id, encryptionKey]);
@@ -44,23 +44,22 @@ export default function ChatRoomScreen() {
       const response = await axios.get(`${API_URL}/api/messages/${id}`);
       
       const decryptedMessages = response.data.map((msg: any) => {
-        try {
-          const decryptedText = decryptMessage(msg.payload, encryptionKey!);
-          return {
-            id: msg.id,
-            senderId: msg.senderId,
-            payload: msg.payload,
-            text: decryptedText,
-            timestamp: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
-        } catch (e) {
-          return {
-            id: msg.id,
-            senderId: msg.senderId,
-            payload: msg.payload,
-            timestamp: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
+        let decryptedText = undefined;
+        if (encryptionKey) {
+          try {
+            decryptedText = decryptMessage(msg.payload, encryptionKey);
+          } catch (e) {
+            // Decryption failed with current key
+          }
         }
+
+        return {
+          id: msg.id,
+          senderId: msg.senderId,
+          payload: msg.payload,
+          text: decryptedText,
+          timestamp: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
       });
       
       setMessages(decryptedMessages);
@@ -70,51 +69,85 @@ export default function ChatRoomScreen() {
   };
 
   useEffect(() => {
-    if (socket && encryptionKey) {
+    if (socket) {
       socket.emit('join_room', id);
 
-      socket.on('receive_message', (data: any) => {
-        handleIncomingMessage(data);
-      });
+      const handleMsg = (data: any) => {
+        if (data.type === 'KEY_CHANGE') {
+          handleKeyChangeEvent(data);
+        } else {
+          handleIncomingMessage(data);
+        }
+      };
+
+      socket.on('receive_message', handleMsg);
 
       return () => {
-        socket.off('receive_message');
+        socket.off('receive_message', handleMsg);
       };
     }
   }, [socket, encryptionKey, id]);
 
+  const handleKeyChangeEvent = (data: any) => {
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      senderId: 'SYSTEM',
+      payload: '⚠️',
+      text: `Alert: ${data.senderName} has updated the Secret Code. You must update yours to continue reading.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setMessages(prev => [...prev, newMessage]);
+    setIsLocked(true);
+    setEncryptionKey(null);
+    setShowCodeModal(true);
+  };
+
   const handleUnlock = () => {
     if (!secretCode) return;
     
-    // Derive key (simplified salt for now)
-    const salt = new Uint8Array(16); // In production, use a unique salt per room
-    const key = deriveKey(secretCode, salt);
-    setEncryptionKey(key);
-    setIsLocked(false);
-    setShowCodeModal(false);
+    try {
+      // Use a simple string salt for CryptoJS
+      const salt = 'funchat_secret_salt'; 
+      const key = deriveKey(secretCode, salt);
+      
+      setEncryptionKey(key);
+      setIsLocked(false);
+      setShowCodeModal(false);
+
+      // Notify the other user if we explicitly clicked "Change Code" (isLocked was false)
+      if (!isLocked) {
+        socket?.emit('send_message', {
+          roomId: id,
+          senderId: user?.id,
+          senderName: user?.username,
+          type: 'KEY_CHANGE',
+          payload: '🔑'
+        });
+      }
+    } catch (e) {
+      console.error('Handshake failed:', e);
+      Alert.alert('Handshake Error', 'Secure key derivation failed. Try a different code.');
+    }
   };
 
   const handleIncomingMessage = (data: any) => {
-    try {
-      const decryptedText = decryptMessage(data.payload, encryptionKey!);
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        senderId: data.senderId,
-        payload: data.payload,
-        text: decryptedText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, newMessage]);
-    } catch (e) {
-      // If decryption fails, show emojis
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        senderId: data.senderId,
-        payload: data.payload,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, newMessage]);
+    let decryptedText = undefined;
+    if (encryptionKey) {
+      try {
+        decryptedText = decryptMessage(data.payload, encryptionKey);
+      } catch (e) {
+        // Fail silently, show emojis
+      }
     }
+
+    const newMessage: Message = {
+      id: data.id || Date.now().toString(),
+      senderId: data.senderId,
+      payload: data.payload,
+      text: decryptedText,
+      timestamp: data.createdAt ? new Date(data.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setMessages(prev => [...prev, newMessage]);
   };
 
   const sendMessage = () => {
@@ -142,6 +175,16 @@ export default function ChatRoomScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
+    if (item.senderId === 'SYSTEM') {
+      return (
+        <View style={styles.systemMessageContainer}>
+          <View style={styles.systemMessageBadge}>
+            <Text style={styles.systemMessageText}>{item.text}</Text>
+          </View>
+        </View>
+      );
+    }
+
     const isMe = item.senderId === user?.id;
     return (
       <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.theirMessageWrapper]}>
@@ -149,7 +192,15 @@ export default function ChatRoomScreen() {
           <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
             {item.text || item.payload}
           </Text>
-          {item.text && <Text style={styles.maskIndicator}>✨ Encrypted as Emojis</Text>}
+          {item.text ? (
+            <Text style={[styles.maskIndicator, isMe ? {color: 'rgba(255,255,255,0.7)'} : {color: '#999'}]}>
+              ✨ Decrypted
+            </Text>
+          ) : (
+            <Text style={[styles.maskIndicator, {color: '#999'}]}>
+              🔒 Encrypted Emojis
+            </Text>
+          )}
         </View>
         <Text style={styles.messageTime}>{item.timestamp}</Text>
       </View>
@@ -157,7 +208,7 @@ export default function ChatRoomScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -165,10 +216,22 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.headerName}>{name}</Text>
-          <Text style={styles.headerStatus}>{isLocked ? 'Locked' : 'Secure Connection'}</Text>
+          <Text style={styles.headerStatus}>{isLocked ? '🔒 Content Encrypted' : '🛡️ Secure Connection'}</Text>
         </View>
-        <TouchableOpacity onPress={() => setShowCodeModal(true)}>
-          <Ionicons name={isLocked ? "lock-closed" : "shield-checkmark"} size={24} color={isLocked ? "#FF6B6B" : "#4ECDC4"} />
+        <TouchableOpacity onPress={() => {
+          if (!isLocked) {
+            // Relock or change code
+            setIsLocked(true);
+            setEncryptionKey(null);
+            setSecretCode('');
+          }
+          setShowCodeModal(true);
+        }}>
+          <Ionicons 
+            name={isLocked ? "lock-closed" : "shield-checkmark"} 
+            size={24} 
+            color={isLocked ? "#FF6B6B" : "#4ECDC4"} 
+          />
         </TouchableOpacity>
       </View>
 
@@ -336,6 +399,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
+  },
+  systemMessageContainer: {
+    alignItems: 'center',
+    marginVertical: 20,
+    paddingHorizontal: 20,
+  },
+  systemMessageBadge: {
+    backgroundColor: '#FFF0F0',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFDADA',
+  },
+  systemMessageText: {
+    fontSize: 12,
+    color: '#FF6B6B',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

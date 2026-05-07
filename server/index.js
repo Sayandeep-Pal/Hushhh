@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
 
 const messageSchema = new mongoose.Schema({
   roomId: { type: String, required: true, index: true },
-  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'funchatUser', required: true },
   payload: { type: String, required: true }, // Emoji string
   createdAt: { type: Date, default: Date.now }
 });
@@ -123,8 +123,8 @@ app.get('/api/messages/:roomId', authenticate, async (req, res) => {
     res.json(messages.map(m => ({
       id: m._id,
       roomId: m.roomId,
-      senderId: m.senderId._id,
-      sender: { username: m.senderId.username },
+      senderId: m.senderId ? m.senderId._id : null,
+      sender: { username: m.senderId ? m.senderId.username : 'Unknown' },
       payload: m.payload,
       createdAt: m.createdAt
     })));
@@ -164,6 +164,6 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
