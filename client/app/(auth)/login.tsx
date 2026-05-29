@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function OnboardingScreen() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const { signInAnonymously } = useAuth();
   const router = useRouter();
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const handleStart = async () => {
     if (!username || username.length < 3) {
@@ -46,14 +49,15 @@ export default function OnboardingScreen() {
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Ionicons name="terminal-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="terminal-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="e.g. Agent_Shadow"
+              placeholderTextColor={theme.textTertiary}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
-              disabled={loading}
+              editable={!loading}
               maxLength={20}
             />
           </View>
@@ -64,14 +68,14 @@ export default function OnboardingScreen() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#FFF" />
+              <ActivityIndicator color={theme.surface} />
             ) : (
               <Text style={styles.buttonText}>Enter The Chat</Text>
             )}
           </TouchableOpacity>
 
           <View style={styles.privacyNote}>
-            <Ionicons name="shield-checkmark-outline" size={14} color="#999" />
+            <Ionicons name="shield-checkmark-outline" size={14} color={theme.textTertiary} />
             <Text style={styles.privacyText}>
               Your identity is stored securely on this device.
             </Text>
@@ -82,10 +86,10 @@ export default function OnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FE',
+    backgroundColor: theme.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -100,10 +104,10 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 30,
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#1A1A1A',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
@@ -116,13 +120,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: '900',
-    color: '#1A1A1A',
+    color: theme.text,
     letterSpacing: -1,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: theme.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
     paddingHorizontal: 20,
@@ -133,18 +137,18 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     borderRadius: 20,
     marginBottom: 20,
     paddingHorizontal: 20,
     height: 70,
-    shadowColor: '#000',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
     borderWidth: 1,
-    borderColor: '#EEE',
+    borderColor: theme.borderLight,
   },
   inputIcon: {
     marginRight: 15,
@@ -153,22 +157,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: theme.text,
   },
   button: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: theme.accent,
     height: 70,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
     elevation: 5,
   },
   buttonText: {
-    color: '#FFF',
+    color: theme.surface,
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -181,7 +185,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   privacyText: {
-    color: '#999',
+    color: theme.textTertiary,
     fontSize: 12,
     fontWeight: '500',
   },

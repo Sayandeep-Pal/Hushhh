@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
 import { handleError, getErrorMessage } from '../../utils/error-handler';
 import { useSocket } from '@/context/SocketContext';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function ChatListScreen() {
   const { user, profile, signOut } = useAuth();
@@ -21,6 +22,8 @@ export default function ChatListScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const router = useRouter();
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   // Handle Deep Links
   useEffect(() => {
@@ -122,14 +125,14 @@ export default function ChatListScreen() {
         });
       }}
     >
-      <View style={[styles.avatar, { backgroundColor: '#1A1A1A' }]}>
+      <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
         <Text style={styles.avatarText}>{item.username[0].toUpperCase()}</Text>
       </View>
       <View style={styles.chatInfo}>
         <Text style={styles.chatName}>{item.username}</Text>
         <Text style={styles.lastEmoji}>Found via Global Search</Text>
       </View>
-      <Ionicons name="finger-print-outline" size={20} color="#1A1A1A" />
+      <Ionicons name="finger-print-outline" size={20} color={theme.accent} />
     </TouchableOpacity>
   );
 
@@ -142,26 +145,27 @@ export default function ChatListScreen() {
       <View style={styles.header}>
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.statusDot, { backgroundColor: isConnected ? '#4ECDC4' : '#FF6B6B' }]} />
+            <View style={[styles.statusDot, { backgroundColor: isConnected ? theme.secondary : theme.primary }]} />
             <Text style={styles.greeting}>{isConnected ? 'Agent active' : 'Offline'}</Text>
           </View>
           <Text style={styles.headerTitle}>{profile?.username || 'Anonymous'}</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={() => setShowIdentityModal(true)} style={styles.actionButton}>
-            <Ionicons name="qr-code-outline" size={24} color="#1A1A1A" />
+            <Ionicons name="qr-code-outline" size={24} color={theme.accent} />
           </TouchableOpacity>
           <TouchableOpacity onPress={signOut} style={styles.actionButton}>
-            <Ionicons name="log-out-outline" size={24} color="#666" />
+            <Ionicons name="log-out-outline" size={24} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+        <Ionicons name="search" size={20} color={theme.textTertiary} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder="Global Search (Codenames)"
+          placeholderTextColor={theme.textTertiary}
           value={search}
           onChangeText={setSearch}
         />
@@ -196,7 +200,7 @@ export default function ChatListScreen() {
             </View>
           ) : null
         }
-        ListFooterComponent={isLoading ? <ActivityIndicator color="#1A1A1A" style={{ marginTop: 20 }} /> : null}
+        ListFooterComponent={isLoading ? <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} /> : null}
       />
 
       {/* Identity Modal */}
@@ -207,7 +211,7 @@ export default function ChatListScreen() {
               style={styles.closeModal} 
               onPress={() => setShowIdentityModal(false)}
             >
-              <Ionicons name="close" size={28} color="#1A1A1A" />
+              <Ionicons name="close" size={28} color={theme.accent} />
             </TouchableOpacity>
             
             <Text style={styles.modalTitle}>Your Secret Identity</Text>
@@ -217,8 +221,8 @@ export default function ChatListScreen() {
               <QRCode
                 value={connectUrl}
                 size={200}
-                color="black"
-                backgroundColor="white"
+                color={theme.qrForeground}
+                backgroundColor={theme.qrBackground}
               />
             </View>
             
@@ -235,10 +239,10 @@ export default function ChatListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FE',
+    backgroundColor: theme.background,
   },
   header: {
     flexDirection: 'row',
@@ -250,7 +254,7 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 12,
-    color: '#1A1A1A',
+    color: theme.text,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 2,
@@ -265,7 +269,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 32,
     fontWeight: '900',
-    color: '#1A1A1A',
+    color: theme.text,
     letterSpacing: -1,
   },
   headerActions: {
@@ -276,10 +280,10 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 18,
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -288,19 +292,19 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     marginHorizontal: 24,
     paddingHorizontal: 16,
     height: 60,
     borderRadius: 20,
     marginBottom: 24,
-    shadowColor: '#000',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
     borderWidth: 1,
-    borderColor: '#EEE',
+    borderColor: theme.borderLight,
   },
   searchIcon: {
     marginRight: 12,
@@ -309,12 +313,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: theme.text,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#1A1A1A',
+    color: theme.text,
     marginBottom: 16,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -323,12 +327,12 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   secretBriefing: {
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     padding: 24,
     borderRadius: 25,
     borderLeftWidth: 8,
-    borderLeftColor: '#1A1A1A',
-    shadowColor: '#000',
+    borderLeftColor: theme.accent,
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -337,12 +341,12 @@ const styles = StyleSheet.create({
   briefingTitle: {
     fontSize: 20,
     fontWeight: '900',
-    color: '#1A1A1A',
+    color: theme.text,
     marginBottom: 12,
   },
   briefingText: {
     fontSize: 15,
-    color: '#666',
+    color: theme.textSecondary,
     lineHeight: 24,
     fontWeight: '500',
   },
@@ -353,17 +357,17 @@ const styles = StyleSheet.create({
   chatCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     padding: 16,
     borderRadius: 22,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: theme.border,
   },
   avatar: {
     width: 50,
@@ -384,11 +388,11 @@ const styles = StyleSheet.create({
   chatName: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1A1A1A',
+    color: theme.text,
   },
   lastEmoji: {
     fontSize: 13,
-    color: '#999',
+    color: theme.textTertiary,
     fontWeight: '500',
   },
   emptyState: {
@@ -401,19 +405,19 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: theme.textTertiary,
     fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: theme.modalOverlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
     width: '100%',
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     borderRadius: 35,
     padding: 30,
     alignItems: 'center',
@@ -425,12 +429,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#1A1A1A',
+    color: theme.text,
     marginBottom: 8,
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: theme.textSecondary,
     textAlign: 'center',
     marginBottom: 30,
     fontWeight: '500',
@@ -449,7 +453,7 @@ const styles = StyleSheet.create({
   codenameText: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#1A1A1A',
+    color: theme.text,
     marginBottom: 30,
     letterSpacing: 2,
   },
@@ -457,14 +461,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     height: 65,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: theme.accent,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 10,
   },
   shareButtonText: {
-    color: '#FFF',
+    color: theme.surface,
     fontSize: 16,
     fontWeight: '800',
   },

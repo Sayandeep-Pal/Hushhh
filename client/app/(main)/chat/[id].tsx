@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -8,6 +8,7 @@ import { useSocket } from '../../../context/SocketContext';
 import { encryptMessage, decryptMessage, deriveKey } from '../../../utils/security';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
+import { useTheme } from '../../../hooks/useTheme';
 
 interface Message {
   id: string;
@@ -24,6 +25,8 @@ export default function ChatRoomScreen() {
   const { user } = useAuth();
   const { socket, isConnected } = useSocket();
   const router = useRouter();
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -69,8 +72,6 @@ export default function ChatRoomScreen() {
       setMessages(decryptedMessages);
     } catch (e) {
       console.error('Failed to fetch messages', e);
-      // We don't always want an Alert here as it can be annoying on every room entry
-      // But we should at least log it or show a small toast if needed.
     } finally {
       setIsRefreshing(false);
     }
@@ -114,7 +115,6 @@ export default function ChatRoomScreen() {
     if (!secretCode) return;
     
     try {
-      // Use a simple string salt for CryptoJS
       const salt = 'funchat_secret_salt'; 
       const key = deriveKey(secretCode, salt);
       
@@ -122,7 +122,6 @@ export default function ChatRoomScreen() {
       setIsLocked(false);
       setShowCodeModal(false);
 
-      // Notify the other user if we explicitly clicked "Change Code" (isLocked was false)
       if (!isLocked) {
         socket?.emit('send_message', {
           roomId: id,
@@ -139,12 +138,15 @@ export default function ChatRoomScreen() {
   };
 
   const handleIncomingMessage = (data: any) => {
+    // Prevent double message for sender (don't add if it's from me)
+    if (data.senderId === user?.id) return;
+
     let decryptedText = undefined;
     if (encryptionKey) {
       try {
         decryptedText = decryptMessage(data.payload, encryptionKey);
       } catch (e) {
-        // Fail silently, show emojis
+        // Fail silently
       }
     }
 
@@ -176,7 +178,6 @@ export default function ChatRoomScreen() {
 
       socket.emit('send_message', messageData);
       
-      // Add locally
       const newMessage: Message = {
         id: Date.now().toString(),
         senderId: user?.id!,
@@ -210,11 +211,11 @@ export default function ChatRoomScreen() {
             {item.text || item.payload}
           </Text>
           {item.text ? (
-            <Text style={[styles.maskIndicator, isMe ? {color: 'rgba(255,255,255,0.7)'} : {color: '#999'}]}>
+            <Text style={[styles.maskIndicator, isMe ? {color: 'rgba(255,255,255,0.7)'} : {color: theme.textTertiary}]}>
               ✨ Decrypted
             </Text>
           ) : (
-            <Text style={[styles.maskIndicator, {color: '#999'}]}>
+            <Text style={[styles.maskIndicator, {color: theme.textTertiary}]}>
               🔒 Encrypted Emojis
             </Text>
           )}
@@ -234,12 +235,12 @@ export default function ChatRoomScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={28} color="#1A1A1A" />
+            <Ionicons name="chevron-back" size={28} color={theme.accent} />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={styles.headerName}>{name}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={[styles.statusDot, { backgroundColor: isConnected ? '#4ECDC4' : '#FF6B6B' }]} />
+              <View style={[styles.statusDot, { backgroundColor: isConnected ? theme.secondary : theme.primary }]} />
               <Text style={styles.headerStatus}>
                 {isConnected ? (isLocked ? 'Content Encrypted' : 'Secure Connection') : 'Connecting...'}
               </Text>
@@ -257,7 +258,7 @@ export default function ChatRoomScreen() {
             <Ionicons 
               name={isLocked ? "lock-closed" : "shield-checkmark"} 
               size={24} 
-              color={isLocked ? "#FF6B6B" : "#4ECDC4"} 
+              color={isLocked ? theme.primary : theme.secondary} 
             />
           </TouchableOpacity>
         </View>
@@ -279,6 +280,7 @@ export default function ChatRoomScreen() {
             <TextInput
               style={styles.input}
               placeholder="Type a message..."
+              placeholderTextColor={theme.textTertiary}
               value={inputText}
               onChangeText={setInputText}
               multiline
@@ -305,6 +307,7 @@ export default function ChatRoomScreen() {
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. BlueDragon2026"
+              placeholderTextColor={theme.textTertiary}
               value={secretCode}
               onChangeText={setSecretCode}
               secureTextEntry
@@ -320,19 +323,19 @@ export default function ChatRoomScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FE',
+    backgroundColor: theme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: theme.border,
   },
   headerInfo: {
     flex: 1,
@@ -341,11 +344,11 @@ const styles = StyleSheet.create({
   headerName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: theme.text,
   },
   headerStatus: {
     fontSize: 12,
-    color: '#666',
+    color: theme.textSecondary,
   },
   statusDot: {
     width: 8,
@@ -372,13 +375,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   myBubble: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: theme.primary,
     borderBottomRightRadius: 4,
   },
   theirBubble: {
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     borderBottomLeftRadius: 4,
-    shadowColor: '#000',
+    shadowColor: theme.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
@@ -392,18 +395,17 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   theirMessageText: {
-    color: '#1A1A1A',
+    color: theme.text,
   },
   maskIndicator: {
     fontSize: 10,
     marginTop: 4,
     opacity: 0.7,
     fontStyle: 'italic',
-    color: 'inherit',
   },
   messageTime: {
     fontSize: 10,
-    color: '#999',
+    color: theme.textTertiary,
     marginTop: 4,
     alignSelf: 'flex-end',
   },
@@ -411,24 +413,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: theme.border,
   },
   input: {
     flex: 1,
-    backgroundColor: '#F8F9FE',
+    backgroundColor: theme.background,
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 10,
     fontSize: 16,
     maxHeight: 100,
+    color: theme.text,
   },
   sendButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: theme.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
@@ -439,29 +442,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   systemMessageBadge: {
-    backgroundColor: '#FFF0F0',
+    backgroundColor: theme.background,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FFDADA',
+    borderColor: theme.border,
   },
   systemMessageText: {
     fontSize: 12,
-    color: '#FF6B6B',
+    color: theme.primary,
     fontWeight: '700',
     textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: theme.modalOverlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
     width: '100%',
-    backgroundColor: '#FFF',
+    backgroundColor: theme.surface,
     borderRadius: 30,
     padding: 30,
     alignItems: 'center',
@@ -473,34 +476,35 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#1A1A1A',
+    color: theme.text,
     marginBottom: 10,
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: theme.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
   },
   modalInput: {
     width: '100%',
     height: 60,
-    backgroundColor: '#F8F9FE',
+    backgroundColor: theme.background,
     borderRadius: 15,
     paddingHorizontal: 20,
     fontSize: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#EEE',
+    borderColor: theme.border,
+    color: theme.text,
   },
   unlockButton: {
     width: '100%',
     height: 60,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: theme.primary,
     borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#FF6B6B',
+    shadowColor: theme.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

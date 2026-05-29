@@ -1,0 +1,45 @@
+const tintColorLight = '#FF6B6B';
+const tintColorDark = '#FFF';
+
+export const Colors = {
+  light: {
+    text: '#1A1A1A',
+    textSecondary: '#666',
+    textTertiary: '#999',
+    background: '#F8F9FE',
+    surface: '#FFF',
+    tint: tintColorLight,
+    icon: '#1A1A1A',
+    tabIconDefault: '#666',
+    tabIconSelected: tintColorLight,
+    border: '#F0F0F0',
+    borderLight: '#EEE',
+    primary: '#FF6B6B',
+    secondary: '#4ECDC4',
+    accent: '#1A1A1A',
+    modalOverlay: 'rgba(0,0,0,0.85)',
+    cardShadow: '#000',
+    qrBackground: '#FFF',
+    qrForeground: '#000',
+  },
+  dark: {
+    text: '#F8F9FE',
+    textSecondary: '#A0A0A0',
+    textTertiary: '#707070',
+    background: '#0F0F12',
+    surface: '#1C1C21',
+    tint: tintColorDark,
+    icon: '#F8F9FE',
+    tabIconDefault: '#A0A0A0',
+    tabIconSelected: tintColorDark,
+    border: '#2A2A30',
+    borderLight: '#333',
+    primary: '#FF8585',
+    secondary: '#5EEAD4',
+    accent: '#F8F9FE',
+    modalOverlay: 'rgba(0,0,0,0.9)',
+    cardShadow: '#000',
+    qrBackground: '#FFF', // Keep QR background white for better scanning
+    qrForeground: '#000',
+  },
+};
