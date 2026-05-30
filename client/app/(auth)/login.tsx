@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,9 +39,13 @@ export default function OnboardingScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>🕵️‍♂️</Text>
+            <Image 
+              source={require('../../assets/images/icon.png')} 
+              style={styles.logoImage} 
+              resizeMode="contain"
+            />
           </View>
-          <Text style={styles.title}>Fun Chat</Text>
+          <Text style={styles.title}>Hush</Text>
           <Text style={styles.subtitle}>
             Enter your codename to start chatting securely. No passwords, no emails.
           </Text>
@@ -113,9 +117,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     shadowRadius: 12,
     elevation: 5,
     marginBottom: 20,
+    overflow: 'hidden',
   },
-  logoText: {
-    fontSize: 45,
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   title: {
     fontSize: 36,

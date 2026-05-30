@@ -57,8 +57,10 @@ export default function ChatListScreen() {
     try {
       const recentRes = await axios.get(`${API_URL}/api/users/recent`);
       setRecentChats(recentRes.data);
-    } catch (e) {
-      console.error('Failed to fetch initial data', e);
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
     }
   };
 
@@ -107,9 +109,11 @@ export default function ChatListScreen() {
           sharedCode: sharedCode || ''
         } 
       });
-    } catch (e) {
-      console.error('Failed to connect via link', e);
-      handleError(e, 'Connection Failed');
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+      handleError(error, 'Connection Failed');
     }
   };
 
@@ -132,9 +136,12 @@ export default function ChatListScreen() {
       if (path === 'connect' && queryParams?.id) {
         connectToUser(queryParams.id as string, queryParams.name as string, queryParams.code as string);
       } else {
-        Alert.alert('Invalid QR', 'This code is not a valid agent identity.');
+        Alert.alert('Invalid QR', 'This code is not a valid Hush identity.');
       }
-    } catch (e) {
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
       Alert.alert('Scan Error', 'Could not parse the agent identity.');
     }
   };
@@ -143,7 +150,7 @@ export default function ChatListScreen() {
     if (!permission?.granted) {
       const { granted } = await requestPermission();
       if (!granted) {
-        Alert.alert('Permission Required', 'Camera access is needed to scan QR codes.');
+        Alert.alert('Permission Required', 'Hush needs camera access to scan agent QR codes.');
         return;
       }
     }
@@ -158,9 +165,10 @@ export default function ChatListScreen() {
       // Filter out the current user by ID to avoid chatting with yourself in search results
       const filtered = response.data.filter((u: any) => u.id !== user?.id);
       setSearchResults(filtered);
-    } catch (e) {
-      console.error('Search failed', e);
-      // Fail silently to avoid interrupting user input
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
     } finally {
       setIsLoading(false);
     }
@@ -178,8 +186,8 @@ export default function ChatListScreen() {
     try {
       await Share.share({
         message: shareSecretCode 
-          ? `Connect with me on Fun Chat! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`
-          : `Connect with me on Fun Chat! My codename is ${profile?.username}. Scan my QR or click: ${finalUrl}`,
+          ? `Connect with me on Hush! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`
+          : `Connect with me on Hush! My codename is ${profile?.username}. Scan my QR or click: ${finalUrl}`,
         url: finalUrl,
       });
     } catch (e) {

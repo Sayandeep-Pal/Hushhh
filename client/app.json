@@ -1,15 +1,17 @@
 {
   "expo": {
-    "name": "Fun Chat",
+    "name": "Hush",
     "slug": "client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "funchat",
     "userInterfaceStyle": "automatic",
+    "jsEngine": "hermes",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sayandeep06.client"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,11 +20,29 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": {
+            "scheme": "funchat"
+          },
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "googleServicesFile": "./google-services.json",
-      "package": "com.sayandeep06.client"
-
+      "package": "com.sayandeep06.client",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -48,7 +68,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow VeilChat to access your camera to scan agent QR codes."
+          "cameraPermission": "Allow Hush to access your camera to scan agent QR codes."
         }
       ],
       [

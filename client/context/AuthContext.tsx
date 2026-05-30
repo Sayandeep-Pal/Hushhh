@@ -41,8 +41,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             pushToken: expoPushToken
           });
           console.log('Push token registered successfully');
-        } catch (e) {
-          console.error('Failed to register push token', e);
+        } catch (error: any) {
+          console.log("ERROR", error);
+          console.log("RESPONSE", error?.response?.data);
+          console.log("MESSAGE", error?.message);
         }
       }
     };
@@ -79,19 +81,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (updatedUser.avatarSeed) {
               await SecureStore.setItemAsync(AVATAR_SEED_KEY, updatedUser.avatarSeed);
             }
-          } catch (e) {
-            console.error('Token verification failed', e);
-            if (axios.isAxiosError(e) && e.response?.status === 401) {
+          } catch (error: any) {
+            console.log("ERROR", error);
+            console.log("RESPONSE", error?.response?.data);
+            console.log("MESSAGE", error?.message);
+            if (axios.isAxiosError(error) && error.response?.status === 401) {
               await signOut();
             }
           }
         }
-      } catch (e) {
-        console.error('Auth initialization failed', e);
+      } catch (error: any) {
+        console.log("ERROR", error);
+        console.log("RESPONSE", error?.response?.data);
+        console.log("MESSAGE", error?.message);
       } finally {
         setIsLoading(false);
       }
-    };
+      };
 
     initAuth();
   }, []);
@@ -117,9 +123,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (userData.avatarSeed) {
         await SecureStore.setItemAsync(AVATAR_SEED_KEY, userData.avatarSeed);
       }
-    } catch (e) {
-      console.error('Anonymous sign in failed', e);
-      throw e;
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+      throw error;
     }
   };
 

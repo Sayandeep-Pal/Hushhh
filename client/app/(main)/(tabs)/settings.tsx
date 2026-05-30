@@ -47,8 +47,11 @@ export default function SettingsScreen() {
     try {
       await signInAnonymously(newCodename, currentAvatarSeed);
       Alert.alert('Success', 'Your identity has been updated.');
-    } catch (e: any) {
-      Alert.alert('Update Failed', e.message || 'Could not update your profile.');
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+      Alert.alert('Update Failed', error.message || 'Could not update your profile.');
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -83,11 +86,17 @@ export default function SettingsScreen() {
       return;
     }
 
-    await setPasscode(newPasscode);
-    setIsPasscodeModalVisible(false);
-    setNewPasscode('');
-    setConfirmPasscode('');
-    Alert.alert('Success', 'App passcode has been set.');
+    try {
+      await setPasscode(newPasscode);
+      setIsPasscodeModalVisible(false);
+      setNewPasscode('');
+      setConfirmPasscode('');
+      Alert.alert('Success', 'App passcode has been set.');
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+    }
   };
 
   return (
@@ -148,20 +157,35 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Secret Code Vault</Text>
-          {Object.keys(vault).length === 0 ? (
-            <Text style={styles.emptyVaultText}>No codes saved in the vault yet.</Text>
-          ) : (
-            Object.entries(vault).map(([roomId, data]) => (
-              <View key={roomId} style={styles.vaultItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.vaultContact}>{data.name}</Text>
-                  <Text style={styles.vaultCode}>{data.code}</Text>
-                </View>
-                <Text style={styles.vaultDate}>{new Date(data.updatedAt).toLocaleDateString()}</Text>
+          <Text style={styles.sectionTitle}>Advanced</Text>
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => router.push('/(main)/vault')}
+          >
+            <View style={styles.settingInfo}>
+              <Ionicons name="key-outline" size={24} color={theme.text} />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>Secret Code Vault</Text>
+                <Text style={styles.settingDescription}>View and manage all your conversation keys.</Text>
               </View>
-            ))
-          )}
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.textTertiary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomWidth: 0 }]}
+            onPress={() => router.push('/(main)/how-to-use')}
+          >
+            <View style={styles.settingInfo}>
+              <Ionicons name="help-circle-outline" size={24} color={theme.text} />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>How to use Hush</Text>
+                <Text style={styles.settingDescription}>Guide to identity, E2EE, and stealth mode.</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.textTertiary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -357,7 +381,15 @@ const createStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  avatarSection: {
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  settingItem: {
     alignItems: 'center',
     marginBottom: 25,
   },

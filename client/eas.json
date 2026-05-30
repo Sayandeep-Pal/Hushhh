@@ -9,10 +9,24 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "developmentClient": false,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://fun-chat-production.up.railway.app"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "developmentClient": false,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://fun-chat-production.up.railway.app"
+      }
     }
   },
   "submit": {

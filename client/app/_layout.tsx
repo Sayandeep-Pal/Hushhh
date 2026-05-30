@@ -29,7 +29,7 @@ function LockScreen() {
     if (!isBiometricEnabled) return;
     
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock Fun Chat',
+      promptMessage: 'Unlock Hush',
       fallbackLabel: 'Use App Passcode',
     });
 
@@ -57,7 +57,7 @@ function LockScreen() {
   return (
     <View style={styles.lockContainer}>
       <Ionicons name="shield-lock" size={80} color="#FF6B6B" />
-      <Text style={styles.lockTitle}>Fun Chat Locked</Text>
+      <Text style={styles.lockTitle}>Hush Locked</Text>
       
       {isPasscodeEnabled && (
         <View style={styles.passcodeSection}>

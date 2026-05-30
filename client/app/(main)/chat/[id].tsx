@@ -97,12 +97,14 @@ export default function ChatRoomScreen() {
         const response = await axios.get(`${API_URL}/api/users/${otherUserId}`);
         setTargetProfile(response.data);
         setIsOtherUserOnline(response.data.isOnline);
-      } catch (e) {
-        console.error('Failed to fetch target profile', e);
+      } catch (error: any) {
+        console.log("ERROR", error);
+        console.log("RESPONSE", error?.response?.data);
+        console.log("MESSAGE", error?.message);
       }
-    };
-    fetchTargetProfile();
-  }, [otherUserId]);
+      };
+      fetchTargetProfile();
+      }, [otherUserId]);
 
   useEffect(() => {
     if (id) {
@@ -154,8 +156,10 @@ export default function ChatRoomScreen() {
       });
       
       setMessages(decryptedMessages);
-    } catch (e) {
-      console.error('Failed to fetch messages', e);
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
     } finally {
       setIsRefreshing(false);
     }
@@ -239,64 +243,82 @@ export default function ChatRoomScreen() {
   const handleIncomingMessage = (data: any) => {
     if (data.senderId === user?.id) return;
 
-    let decryptedText = undefined;
-    let isOldKey = false;
-    
-    if (encryptionKey) {
-      try {
-        decryptedText = decryptMessage(data.payload, encryptionKey);
-      } catch (e) {}
-    }
+    try {
+      let decryptedText = undefined;
+      let isOldKey = false;
+      
+      if (encryptionKey) {
+        try {
+          decryptedText = decryptMessage(data.payload, encryptionKey);
+        } catch (e) {}
+      }
 
-    if ((!decryptedText || decryptedText === 'FINGERPRINT_MISMATCH') && previousKey) {
-      try {
-        const oldDecrypted = decryptMessage(data.payload, previousKey);
-        if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('🔒')) {
-          decryptedText = oldDecrypted;
-          isOldKey = true;
-        }
-      } catch (e) {}
-    }
+      if ((!decryptedText || decryptedText === 'FINGERPRINT_MISMATCH') && previousKey) {
+        try {
+          const oldDecrypted = decryptMessage(data.payload, previousKey);
+          if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('🔒')) {
+            decryptedText = oldDecrypted;
+            isOldKey = true;
+          }
+        } catch (e) {}
+      }
 
-    const newMessage: Message = {
-      id: data.id || Date.now().toString(),
-      senderId: data.senderId,
-      payload: data.payload,
-      text: decryptedText,
-      isOldKey,
-      timestamp: data.createdAt ? new Date(data.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => [...prev, newMessage]);
+      const newMessage: Message = {
+        id: data.id || Date.now().toString(),
+        senderId: data.senderId,
+        payload: data.payload,
+        text: decryptedText,
+        isOldKey,
+        timestamp: data.createdAt ? new Date(data.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, newMessage]);
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+    }
   };
 
   const handleAcceptKeyChange = () => {
-    setPreviousKey(encryptionKey);
-    setEncryptionKey(null);
-    setSecretCode('');
-    setShowKeyRequest(false);
-    setIsRespondingToHandshake(true);
-    setShowCodeModal(true);
-    
-    socket?.emit('send_message', {
-      roomId: id,
-      senderId: user?.id,
-      senderName: user?.username,
-      type: 'KEY_CHANGE_ACCEPTED',
-      payload: '🤝'
-    });
+    try {
+      setPreviousKey(encryptionKey);
+      setEncryptionKey(null);
+      setSecretCode('');
+      setShowKeyRequest(false);
+      setIsRespondingToHandshake(true);
+      setShowCodeModal(true);
+      
+      socket?.emit('send_message', {
+        roomId: id,
+        senderId: user?.id,
+        senderName: user?.username,
+        type: 'KEY_CHANGE_ACCEPTED',
+        payload: '🤝'
+      });
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+    }
   };
 
   const handleRejectKeyChange = () => {
-    setShowKeyRequest(false);
-    setPendingKeyRequest(null);
-    
-    socket?.emit('send_message', {
-      roomId: id,
-      senderId: user?.id,
-      senderName: user?.username,
-      type: 'KEY_CHANGE_REJECTED',
-      payload: '🚫'
-    });
+    try {
+      setShowKeyRequest(false);
+      setPendingKeyRequest(null);
+      
+      socket?.emit('send_message', {
+        roomId: id,
+        senderId: user?.id,
+        senderName: user?.username,
+        type: 'KEY_CHANGE_REJECTED',
+        payload: '🚫'
+      });
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+    }
   };
 
   const handleUnlock = () => {
@@ -332,8 +354,10 @@ export default function ChatRoomScreen() {
           payload: '🔑'
         });
       }
-    } catch (e) {
-      console.error('Handshake failed:', e);
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
       Alert.alert('Handshake Error', 'Secure key derivation failed. Try a different code.');
     }
   };
@@ -385,8 +409,11 @@ export default function ChatRoomScreen() {
       };
       setMessages(prev => [...prev, newMessage]);
       setInputText('');
-    } catch (e) {
-      handleError(e, 'Transmission Failed');
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
+      handleError(error, 'Transmission Failed');
     }
   };
 

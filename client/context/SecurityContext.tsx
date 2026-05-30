@@ -55,11 +55,13 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (biometricStored !== 'true' && passcodeEnabledStored !== 'true') {
           setIsAppLocked(false);
         }
-      } catch (e) {
-        console.error('Security init failed', e);
+      } catch (error: any) {
+        console.log("ERROR", error);
+        console.log("RESPONSE", error?.response?.data);
+        console.log("MESSAGE", error?.message);
         setIsAppLocked(false);
       }
-    };
+      };
 
     initSecurity();
   }, []);

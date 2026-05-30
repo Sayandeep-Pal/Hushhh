@@ -34,8 +34,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       );
       setSound(sound);
       await sound.playAsync();
-    } catch (e) {
-      console.error('Failed to play sound', e);
+    } catch (error: any) {
+      console.log("ERROR", error);
+      console.log("RESPONSE", error?.response?.data);
+      console.log("MESSAGE", error?.message);
     }
   }
 
