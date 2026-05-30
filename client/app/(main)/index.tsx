@@ -15,10 +15,12 @@ import { useSocket } from '@/context/SocketContext';
 import { useTheme } from '../../hooks/useTheme';
 
 export default function ChatListScreen() {
-  const { user, profile, signOut } = useAuth();
-  const { isConnected } = useSocket();
+  const { user, profile, signOut, token } = useAuth();
+  const { isConnected, socket } = useSocket();
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
+  const [recentChats, setRecentChats] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const router = useRouter();
@@ -45,6 +47,35 @@ export default function ChatListScreen() {
 
     return () => sub.remove();
   }, []);
+
+  const fetchData = async () => {
+    if (!token) return;
+    try {
+      const [onlineRes, recentRes] = await Promise.all([
+        axios.get(`${API_URL}/api/users/online`),
+        axios.get(`${API_URL}/api/users/recent`)
+      ]);
+      setOnlineUsers(onlineRes.data);
+      setRecentChats(recentRes.data);
+    } catch (e) {
+      console.error('Failed to fetch initial data', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [token]);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on('user_status_change', () => {
+        fetchData();
+      });
+      return () => {
+        socket.off('user_status_change');
+      };
+    }
+  }, [socket]);
 
   const connectToUser = async (targetId: string, targetName?: string) => {
     if (targetId === user?.id) {
@@ -127,18 +158,41 @@ export default function ChatListScreen() {
     >
       <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
         <Text style={styles.avatarText}>{item.username[0].toUpperCase()}</Text>
+        {item.isOnline && <View style={styles.onlineBadge} />}
       </View>
       <View style={styles.chatInfo}>
         <Text style={styles.chatName}>{item.username}</Text>
-        <Text style={styles.lastEmoji}>Found via Global Search</Text>
+        <Text style={styles.lastEmoji}>{item.isOnline ? 'Online now' : 'Found in records'}</Text>
       </View>
-      <Ionicons name="finger-print-outline" size={20} color={theme.accent} />
+      <Ionicons name="finger-print-outline" size={20} color={item.isOnline ? theme.secondary : theme.accent} />
+    </TouchableOpacity>
+  );
+
+  const renderOnlineUser = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.onlineUserContainer}
+      onPress={() => {
+        const roomId = [user?.id, item.id].sort().join('_');
+        router.push({ 
+          pathname: '/(main)/chat/[id]', 
+          params: { id: roomId, name: item.username } 
+        });
+      }}
+    >
+      <View style={[styles.onlineAvatar, { borderColor: theme.secondary }]}>
+        <View style={[styles.avatarInner, { backgroundColor: theme.accent }]}>
+          <Text style={styles.avatarText}>{item.username[0].toUpperCase()}</Text>
+        </View>
+      </View>
+      <Text style={styles.onlineUsername} numberOfLines={1}>{item.username}</Text>
     </TouchableOpacity>
   );
 
   const connectUrl = Linking.createURL('connect', {
     queryParams: { id: user?.id, name: profile?.username },
   });
+
+  const displayData = search.length > 2 ? searchResults : recentChats;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -172,25 +226,45 @@ export default function ChatListScreen() {
       </View>
 
       <FlatList
-        data={searchResults}
+        data={displayData}
         renderItem={renderUserItem}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          search.length > 2 ? (
-            <Text style={styles.sectionTitle}>Global Intelligence Results</Text>
-          ) : (
-            <View style={styles.welcomeContainer}>
-              <View style={styles.secretBriefing}>
-                <Text style={styles.briefingTitle}>Mission Briefing 📂</Text>
-                <Text style={styles.briefingText}>
-                  1. Search for codenames to find allies.{"\n"}
-                  2. Share your QR to connect privately.{"\n"}
-                  3. Use a Secret Code inside chats to unlock encryption.
-                </Text>
+          <>
+            {onlineUsers.length > 0 && !search && (
+              <View style={styles.onlineSection}>
+                <Text style={styles.sectionTitle}>Active Agents</Text>
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={onlineUsers}
+                  renderItem={renderOnlineUser}
+                  keyExtractor={item => item.id}
+                  contentContainerStyle={styles.onlineList}
+                />
               </View>
-            </View>
-          )
+            )}
+
+            {search.length > 2 ? (
+              <Text style={styles.sectionTitle}>Global Intelligence Results</Text>
+            ) : (
+              recentChats.length > 0 ? (
+                <Text style={styles.sectionTitle}>Recent Encounters</Text>
+              ) : (
+                <View style={styles.welcomeContainer}>
+                  <View style={styles.secretBriefing}>
+                    <Text style={styles.briefingTitle}>Mission Briefing 📂</Text>
+                    <Text style={styles.briefingText}>
+                      1. Search for codenames to find allies.{"\n"}
+                      2. Share your QR to connect privately.{"\n"}
+                      3. Use a Secret Code inside chats to unlock encryption.
+                    </Text>
+                  </View>
+                </View>
+              )
+            )}
+          </>
         }
         ListEmptyComponent={
           search.length > 2 && !isLoading ? (
@@ -456,6 +530,51 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: theme.text,
     marginBottom: 30,
     letterSpacing: 2,
+  },
+  onlineSection: {
+    marginBottom: 24,
+  },
+  onlineList: {
+    paddingRight: 24,
+  },
+  onlineUserContainer: {
+    alignItems: 'center',
+    marginRight: 20,
+    width: 70,
+  },
+  onlineAvatar: {
+    width: 66,
+    height: 66,
+    borderRadius: 24,
+    borderWidth: 2,
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  avatarInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  onlineUsername: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.text,
+    textAlign: 'center',
+  },
+  onlineBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: theme.secondary,
+    borderWidth: 2,
+    borderColor: theme.surface,
   },
   shareButton: {
     flexDirection: 'row',

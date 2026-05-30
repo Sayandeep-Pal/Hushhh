@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
+const { Expo } = require('expo-server-sdk');
 require('dotenv').config();
 
 const app = express();
@@ -15,6 +16,8 @@ const io = new Server(server, {
   }
 });
 
+const expo = new Expo();
+
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/funchat';
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-agent-key';
@@ -22,6 +25,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret-agent-key';
 // MongoDB Models
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true },
+  pushToken: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -51,6 +55,21 @@ const authenticate = (req, res, next) => {
   });
 };
 
+// Socket.io Tracking
+const onlineUsers = new Map(); // userId -> socketId (simplified)
+
+// Socket.io Auth Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(); // Allow connection but won't be "online" in registry
+  
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return next();
+    socket.userId = decoded.userId;
+    next();
+  });
+});
+
 // Database Connection
 mongoose.connect(MONGO_URI)
   .then(() => console.log('Connected to MongoDB'))
@@ -64,7 +83,7 @@ app.post('/api/auth/anonymous', async (req, res) => {
   
   try {
     let user;
-    if (userId) {
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       user = await User.findById(userId);
     }
     
@@ -87,6 +106,44 @@ app.post('/api/auth/anonymous', async (req, res) => {
   }
 });
 
+// Online Users
+app.get('/api/users/online', authenticate, async (req, res) => {
+  try {
+    const userIds = Array.from(onlineUsers.keys()).filter(id => id !== req.userId);
+    const users = await User.find({ _id: { $in: userIds } }).select('username _id');
+    res.json(users.map(u => ({ id: u._id, username: u.username, isOnline: true })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Recent Chats
+app.get('/api/users/recent', authenticate, async (req, res) => {
+  try {
+    const myId = req.userId;
+    // Find unique roomIds where user participated
+    const roomIds = await Message.distinct('roomId', {
+      roomId: { $regex: myId }
+    });
+
+    // Extract other user IDs
+    const otherUserIds = roomIds.map(roomId => {
+      const parts = roomId.split('_');
+      return parts[0] === myId ? parts[1] : parts[0];
+    }).filter(id => mongoose.Types.ObjectId.isValid(id) && id !== myId);
+
+    const recentUsers = await User.find({ _id: { $in: otherUserIds } }).select('username _id');
+    
+    res.json(recentUsers.map(u => ({ 
+      id: u._id, 
+      username: u.username,
+      isOnline: onlineUsers.has(u._id.toString())
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // User Search
 app.get('/api/users/search', authenticate, async (req, res) => {
   const { query } = req.query;
@@ -96,7 +153,11 @@ app.get('/api/users/search', authenticate, async (req, res) => {
       _id: { $ne: req.userId }
     }).limit(10).select('username _id');
     
-    res.json(users.map(u => ({ id: u._id, username: u.username })));
+    res.json(users.map(u => ({ 
+      id: u._id, 
+      username: u.username,
+      isOnline: onlineUsers.has(u._id.toString())
+    })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -107,7 +168,7 @@ app.get('/api/users/:id', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('username _id');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ id: user._id, username: user.username });
+    res.json({ id: user._id, username: user.username, isOnline: onlineUsers.has(user._id.toString()) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -133,13 +194,63 @@ app.get('/api/messages/:roomId', authenticate, async (req, res) => {
   }
 });
 
+// Update Push Token
+app.post('/api/users/push-token', authenticate, async (req, res) => {
+  const { pushToken } = req.body;
+  try {
+    await User.findByIdAndUpdate(req.userId, { pushToken });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.send('Fun Chat MongoDB Server is running');
 });
 
+// Helper for Push Notifications
+const sendPushNotification = async (userId, senderUsername, roomId) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user || !user.pushToken) return;
+
+    if (!Expo.isExpoPushToken(user.pushToken)) {
+      console.error(`Push token ${user.pushToken} is not a valid Expo push token`);
+      return;
+    }
+
+    const messages = [{
+      to: user.pushToken,
+      sound: 'default',
+      title: 'New Secure Message 🔒',
+      body: `${senderUsername} sent you a message`,
+      data: { senderUsername, roomId },
+      priority: 'high',
+      badge: 1,
+    }];
+
+    const chunks = expo.chunkPushNotifications(messages);
+    for (let chunk of chunks) {
+      try {
+        await expo.sendPushNotificationsAsync(chunk);
+      } catch (error) {
+        console.error('Error sending push notification chunk:', error);
+      }
+    }
+  } catch (e) {
+    console.error('Push notification error:', e);
+  }
+};
+
 // Socket.io
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('User connected:', socket.id, 'UserId:', socket.userId);
+
+  if (socket.userId) {
+    onlineUsers.set(socket.userId, socket.id);
+    io.emit('user_status_change', { userId: socket.userId, status: 'online' });
+  }
 
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
@@ -153,14 +264,37 @@ io.on('connection', (socket) => {
         payload: data.payload
       });
       await newMessage.save();
-      io.to(data.roomId).emit('receive_message', data);
+      
+      // Broadcast to room
+      io.to(data.roomId).emit('receive_message', {
+        ...data,
+        id: newMessage._id,
+        createdAt: newMessage.createdAt
+      });
+
+      // Handle Push Notifications for the recipient
+      const [id1, id2] = data.roomId.split('_');
+      const recipientId = id1 === data.senderId ? id2 : id1;
+
+      // Check if recipient is online
+      if (recipientId && !onlineUsers.has(recipientId)) {
+        // Fetch sender username for notification
+        const sender = await User.findById(data.senderId);
+        sendPushNotification(recipientId, sender ? sender.username : 'Someone', data.roomId);
+      }
     } catch (e) {
       console.error('Failed to save message', e);
     }
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected');
+    console.log('User disconnected:', socket.id);
+    if (socket.userId) {
+      // Only remove if this was the last socket for this user
+      // (Simplified: assuming one connection per user for now)
+      onlineUsers.delete(socket.userId);
+      io.emit('user_status_change', { userId: socket.userId, status: 'offline' });
+    }
   });
 });
 

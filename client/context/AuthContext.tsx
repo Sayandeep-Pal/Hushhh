@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
@@ -28,6 +29,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<Profile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { expoPushToken } = usePushNotifications();
+
+  useEffect(() => {
+    const registerToken = async () => {
+      if (user && expoPushToken) {
+        try {
+          await axios.post(`${API_URL}/api/users/push-token`, {
+            pushToken: expoPushToken
+          });
+          console.log('Push token registered successfully');
+        } catch (e) {
+          console.error('Failed to register push token', e);
+        }
+      }
+    };
+
+    registerToken();
+  }, [user, expoPushToken]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -55,7 +74,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await SecureStore.setItemAsync(TOKEN_KEY, newToken);
           } catch (e) {
             console.error('Token verification failed', e);
-            // If verification fails, we don't necessarily logout, just keep local
+            // If verification fails significantly (e.g. 401), clear the session
+            if (axios.isAxiosError(e) && e.response?.status === 401) {
+              await signOut();
+            }
           }
         }
       } catch (e) {

@@ -23,7 +23,7 @@ import { handleError, getErrorMessage } from '../../../utils/error-handler';
 export default function ChatRoomScreen() {
   const { id, name } = useLocalSearchParams<{ id: string, name: string }>();
   const { user } = useAuth();
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected, setActiveRoomId } = useSocket();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -37,6 +37,13 @@ export default function ChatRoomScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (id) {
+      setActiveRoomId(id);
+      return () => setActiveRoomId(null);
+    }
+  }, [id]);
 
   useEffect(() => {
     if (id) {

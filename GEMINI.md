@@ -1,71 +1,89 @@
 # Fun Chat - Project Log
 
-## Core Architecture
-- **Client:** React Native (Expo SDK 54)
-    - **Routing:** Expo Router (File-based navigation)
-    - **State Management:** Context API (`AuthContext`, `SocketContext`)
-    - **Styling:** React Native Stylesheets (Playful & Vibrant)
-- **Server:** Node.js (Express 5)
-    - **Real-time:** Socket.io (Rooms for private chats)
-    - **Database:** MongoDB (via Mongoose)
-    - **Auth:** Custom Anonymous JWT-based identity
-- **Security Layer (E2EE):**
+## 🚀 Core Architecture
+- **Client:** React Native (Expo SDK 54, React Native 0.81.5)
+    - **Routing:** Expo Router v6 (File-based navigation)
+    - **State Management:** React Context API (`AuthContext`, `SocketContext`)
+    - **Security:** `crypto-js` for AES/PBKDF2, `expo-crypto` for secure IV generation
+    - **Storage:** `expo-secure-store` for JWT and Identity persistence
+    - **UI:** Custom Theme System (`useTheme`), `react-native-reanimated`, `@expo/vector-icons`
+- **Server:** Node.js (Express 5.2.1)
+    - **Real-time:** Socket.io 4.8.3
+    - **Database:** MongoDB (via Mongoose 9.6.1)
+    - **Auth:** Anonymous JWT-based identity system
+- **Security Layer (E2EE + Stealth):**
     - **Encryption:** AES-256-CBC (Client-side only)
-    - **Key Derivation:** PBKDF2 (1000 iterations, derived from a user-provided Secret Code)
+    - **Key Derivation:** PBKDF2 (1000 iterations, salt: `funchat_secret_salt`)
     - **Encoding:** Stealth Steganography (Zero-Width characters)
-    - **Mechanism:** Ciphertext is converted to binary and mapped to invisible Unicode characters (`\u200B`, `\u200C`).
-    - **Privacy:** Messages appear as a single "carrier" emoji (e.g., 🔒, 👻) but contain the full hidden payload.
+    - **Mechanism:** Ciphertext is converted to binary and mapped to invisible Unicode characters.
 
-## Project Structure
+## 📁 Project Structure
 ```text
 /
 ├── client/                 # Expo React Native App
 │   ├── app/                # Expo Router pages
-│   │   ├── (auth)/         # Login/Identity creation
-│   │   └── (main)/         # Chat lists and conversation screens (Stealth Mode)
+│   │   ├── (auth)/         # Login/Identity creation (login.tsx)
+│   │   └── (main)/         # Chat list (index.tsx) and Conversation ([id].tsx)
 │   ├── context/            # Auth and Socket providers
-│   ├── utils/              # E2EE (security.ts with Zero-Width logic)
-│   └── constants/          # UI theme and config
+│   ├── utils/              # security.ts (E2EE/Stealth), error-handler.ts
+│   ├── hooks/              # useTheme.ts, useThemeColor.ts
+│   ├── constants/          # Colors.ts (Vibrant & Playful theme)
+│   └── components/         # Shared UI components
 └── server/                 # Express Backend
-    ├── index.js            # Main entry point (Stores invisible payloads)
-    └── .env                # Environment variables (MONGO_URI, JWT_SECRET)
+    ├── index.js            # Main entry point (API + Sockets + Models)
+    ├── package.json        # Dependencies (Express 5, Mongoose 9, Socket.io 4)
+    └── .env                # MONGO_URI, JWT_SECRET
 ```
 
-## Security Workflow (E2EE + Stealth)
-1. **Key Generation:** User enters a "Secret Code". Client derives a 256-bit key via PBKDF2.
-2. **Encryption:** Plaintext message + IV -> AES-256-CBC -> Ciphertext.
-3. **Stealth Encoding:**
-    - [IV + Ciphertext] is converted to a binary string.
-    - Binary `0` ➔ `\u200B`, Binary `1` ➔ `\u200C`.
-    - Resulting invisible string is injected into a "carrier" emoji.
-4. **Transmission:** The single carrier emoji (containing the hidden data) is sent via Socket.io.
-5. **Decryption:** Recipient extracts zero-width characters ➔ Binary ➔ [IV + Ciphertext] ➔ AES-256-CBC ➔ Plaintext.
+## 🔒 Security Deep Dive
 
-## Technical Decisions
-- **MongoDB:** Chosen for flexible schema and easy persistence of message history.
-- **Anonymous Identity:** Users choose a "Codename". Identity is persisted via a JWT stored in `SecureStore` (client) and `User` model (server).
-- **Socket.io:** Handles real-time events (`send_message`, `receive_message`, `join_room`).
-- **Base-Emoji:** A custom encoding scheme that makes encrypted payloads look like "fun" emoji strings, aligning with the project's playful theme.
+### E2EE Workflow
+1. **Handshake:** User enters a "Secret Code" in the Chat Room.
+2. **Key Derivation:** Client derives a 256-bit key using PBKDF2 with 1000 iterations and the hardcoded salt `funchat_secret_salt`.
+3. **Encryption:** 
+    - Generate 16-byte random IV via `expo-crypto`.
+    - Plaintext + IV + Derived Key -> AES-256-CBC -> Ciphertext.
+    - Payload format: `iv_hex : ciphertext_hex`.
 
-## How to Run
-### 1. Server
-```bash
-cd server
-npm install
-# Configure .env: MONGO_URI, JWT_SECRET
-node index.js
-```
+### Stealth Steganography (Zero-Width)
+- **Mapping:**
+    - `0` ➔ `\u200B` (Zero Width Space)
+    - `1` ➔ `\u200C` (Zero Width Non-Joiner)
+    - `Separator` ➔ `\u200D` (Zero Width Joiner)
+- **Carrier:** The invisible payload is appended to a "carrier" emoji (default: `🔒`).
+- **Persistence:** Only the carrier emoji with hidden data is sent to the server and stored in MongoDB.
 
-### 2. Client
-```bash
-cd client
-npm install
-# Configure .env: EXPO_PUBLIC_API_URL
-npx expo start
-```
+### Key Synchronization
+- When a user changes their Secret Code, the client emits a `KEY_CHANGE` event via Socket.io.
+- The recipient receives a system alert prompting them to update their code to maintain the secure channel.
 
-## Future Roadmap (Phase 6+)
-- [ ] Push Notifications for new messages.
-- [ ] Media sharing (Images/Audio) with E2EE.
-- [ ] Room discovery via QR Code sharing.
-- [ ] Improved "Secret Code" management (recovery hints/verification).
+## 📡 API & Socket Contracts
+
+### REST API (Server)
+- `POST /api/auth/anonymous`: Creates or retrieves an anonymous identity. Requires `{ username, userId? }`. Returns `{ token, user }`.
+- `GET /api/users/search?query=...`: Searches for users by codename (regex, case-insensitive).
+- `GET /api/users/:id`: Retrieves a single user's profile.
+- `GET /api/messages/:roomId`: Fetches message history for a specific room.
+
+### Socket.io Events
+- `join_room(roomId)`: Joins a private chat room.
+- `send_message(data)`:
+    - Payload: `{ roomId, senderId, payload }` where payload is the steganographic string.
+    - Persists to MongoDB `Message` model.
+    - Emits `receive_message` to the room.
+
+## 🔗 Discovery & Connectivity
+- **Deep Linking:** Supports `funchat://connect?id=USER_ID&name=USERNAME`.
+- **QR Codes:** Each user can generate a QR code containing their deep link for easy "offline-to-online" connection.
+- **Room IDs:** Generated by sorting and joining two User IDs: `[ID1, ID2].sort().join('_')`.
+
+## 🛠 Technical Decisions
+- **MongoDB:** Selected for schema-less storage of message payloads, allowing future expansion to media sharing.
+- **Express 5:** Uses the latest Express features for better error handling in async routes.
+- **Stealth Mode:** Message "masking" as emojis ensures that even if a shoulder-surfer sees the screen, they only see emojis unless the chat is "unlocked".
+
+## 🛣 Future Roadmap
+- [x] **Push Notifications:** Notify users of new encrypted payloads.
+- [ ] **Media E2EE:** Encrypting and hiding images/audio within multiple emoji "packets".
+- [ ] **Room Discovery:** Local discovery using Bluetooth/mDNS for truly anonymous nearby chatting.
+- [ ] **Code Recovery:** Optional hint system for Secret Codes stored locally in `SecureStore`.
