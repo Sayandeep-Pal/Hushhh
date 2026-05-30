@@ -46,6 +46,12 @@
       "expo-web-browser",
       "expo-local-authentication",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow VeilChat to access your camera to scan agent QR codes."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",

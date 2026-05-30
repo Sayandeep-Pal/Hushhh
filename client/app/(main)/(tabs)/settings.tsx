@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { StyleSheet, Text, View, Switch, TouchableOpacity, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, Switch, TouchableOpacity, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSecurity } from '../../../context/SecurityContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useTheme } from '../../../hooks/useTheme';
+import { Avatar } from '../../../components/Avatar';
+import { useMemo, useState } from 'react';
 
 export default function SettingsScreen() {
   const { 
@@ -14,7 +15,8 @@ export default function SettingsScreen() {
     appPasscode, 
     toggleBiometrics, 
     setPasscode,
-    hasHardware 
+    hasHardware,
+    vault
   } = useSecurity();
   const { user, profile, signInAnonymously, signOut } = useAuth();
   
@@ -26,19 +28,24 @@ export default function SettingsScreen() {
   const [newPasscode, setNewPasscode] = useState('');
   const [confirmPasscode, setConfirmPasscode] = useState('');
 
-  // Profile states
   const [newCodename, setNewCodename] = useState(profile?.username.split('#')[0] || '');
+  const [currentAvatarSeed, setCurrentAvatarSeed] = useState(profile?.avatarSeed || profile?.username || '');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  const handleShuffleAvatar = () => {
+    const newSeed = Math.random().toString(36).substring(7);
+    setCurrentAvatarSeed(newSeed);
+  };
 
   const handleUpdateProfile = async () => {
     if (!newCodename || newCodename.length < 3) {
       Alert.alert('Invalid Codename', 'Please enter at least 3 characters.');
       return;
     }
-    
+
     setIsUpdatingProfile(true);
     try {
-      await signInAnonymously(newCodename);
+      await signInAnonymously(newCodename, currentAvatarSeed);
       Alert.alert('Success', 'Your identity has been updated.');
     } catch (e: any) {
       Alert.alert('Update Failed', e.message || 'Could not update your profile.');
@@ -95,6 +102,23 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Agent Profile</Text>
+          
+          <View style={styles.avatarSection}>
+            <View style={styles.largeAvatarWrapper}>
+              <Avatar name={profile?.username || 'Agent'} seed={currentAvatarSeed} size={100} />
+            </View>
+            <TouchableOpacity style={styles.shuffleButton} onPress={handleShuffleAvatar}>
+              <Ionicons name="refresh" size={20} color="#FFF" />
+              <Text style={styles.shuffleButtonText}>Shuffle Avatar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.warningBox}>
+            <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
+            <Text style={styles.warningText}>
+              IMPORTANT: Your Secret Codes and messages are stored LOCALLY on this device. If you clear app data or uninstall, they will be PERMANENTLY lost.
+            </Text>
+          </View>
           <View style={styles.profileInputContainer}>
             <View style={styles.inputWrapper}>
               <Ionicons name="person-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
@@ -121,6 +145,23 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
           <Text style={styles.profileNote}>Your unique ID stays the same when you change your name.</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Secret Code Vault</Text>
+          {Object.keys(vault).length === 0 ? (
+            <Text style={styles.emptyVaultText}>No codes saved in the vault yet.</Text>
+          ) : (
+            Object.entries(vault).map(([roomId, data]) => (
+              <View key={roomId} style={styles.vaultItem}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.vaultContact}>{data.name}</Text>
+                  <Text style={styles.vaultCode}>{data.code}</Text>
+                </View>
+                <Text style={styles.vaultDate}>{new Date(data.updatedAt).toLocaleDateString()}</Text>
+              </View>
+            ))
+          )}
         </View>
 
         <View style={styles.section}>
@@ -315,6 +356,79 @@ const createStyles = (theme: any) => StyleSheet.create({
     marginTop: 15,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  largeAvatarWrapper: {
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  shuffleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 8,
+  },
+  shuffleButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  warningBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    padding: 15,
+    borderRadius: 15,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.3)',
+    gap: 12,
+  },
+  warningText: {
+    flex: 1,
+    color: '#FF6B6B',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  vaultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  vaultContact: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.text,
+  },
+  vaultCode: {
+    fontSize: 14,
+    color: theme.primary,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  vaultDate: {
+    fontSize: 11,
+    color: theme.textTertiary,
+    fontWeight: '500',
+  },
+  emptyVaultText: {
+    color: theme.textTertiary,
+    fontSize: 14,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingVertical: 10,
   },
   settingItem: {
     flexDirection: 'row',

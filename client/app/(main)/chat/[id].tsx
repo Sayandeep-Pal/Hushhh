@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
+import { useSecurity } from '../../../context/SecurityContext';
 import { encryptMessage, decryptMessage, deriveKey } from '../../../utils/security';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { useTheme } from '../../../hooks/useTheme';
+import { Avatar } from '../../../components/Avatar';
 
 interface Message {
   id: string;
@@ -22,13 +24,15 @@ interface Message {
 import { handleError, getErrorMessage } from '../../../utils/error-handler';
 
 export default function ChatRoomScreen() {
-  const { id, name } = useLocalSearchParams<{ id: string, name: string }>();
+  const { id, name, sharedCode } = useLocalSearchParams<{ id: string, name: string, sharedCode?: string }>();
   const { user } = useAuth();
   const { socket, isConnected, setActiveRoomId } = useSocket();
+  const { saveSecretCode } = useSecurity();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   
+  const [targetProfile, setTargetProfile] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [secretCode, setSecretCode] = useState('');
@@ -42,11 +46,63 @@ export default function ChatRoomScreen() {
   const [pendingKeyRequest, setPendingKeyRequest] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRespondingToHandshake, setIsRespondingToHandshake] = useState(false);
+  
+  // Presence and Typing states
+  const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [isMeTyping, setIsMeTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
   // Keep track if we have EVER had a key this session
   const [hasDerivedKeyOnce, setHasDerivedKeyOnce] = useState(false);
+
+  // Auto-apply shared code if provided
+  useEffect(() => {
+    if (sharedCode && !encryptionKey && isLocked) {
+      try {
+        const salt = 'funchat_secret_salt';
+        const key = deriveKey(sharedCode, salt);
+        setEncryptionKey(key);
+        setIsLocked(false);
+        setShowCodeModal(false);
+        setHasDerivedKeyOnce(true);
+        
+        // Add a system message to inform about the shared code
+        const systemMsg: Message = {
+          id: 'shared-code-init-' + Date.now(),
+          senderId: 'SYSTEM',
+          payload: '🛡️',
+          text: `Secure channel established using a shared code.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setMessages(prev => [systemMsg, ...prev]);
+      } catch (e) {
+        console.error('Failed to apply shared code', e);
+      }
+    }
+  }, [sharedCode]);
+
+  const otherUserId = useMemo(() => {
+    if (!id || !user?.id) return null;
+    return id.split('_').find(uId => uId !== user.id);
+  }, [id, user?.id]);
+
+  useEffect(() => {
+    const fetchTargetProfile = async () => {
+      if (!otherUserId) return;
+      try {
+        const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
+        const response = await axios.get(`${API_URL}/api/users/${otherUserId}`);
+        setTargetProfile(response.data);
+        setIsOtherUserOnline(response.data.isOnline);
+      } catch (e) {
+        console.error('Failed to fetch target profile', e);
+      }
+    };
+    fetchTargetProfile();
+  }, [otherUserId]);
 
   useEffect(() => {
     if (id) {
@@ -109,6 +165,24 @@ export default function ChatRoomScreen() {
     if (socket) {
       socket.emit('join_room', id);
 
+      socket.on('user_status_change', (data: any) => {
+        if (data.userId === otherUserId) {
+          setIsOtherUserOnline(data.status === 'online');
+        }
+      });
+
+      socket.on('user_typing', (data: any) => {
+        if (data.userId !== user?.id && data.roomId === id) {
+          setIsOtherUserTyping(true);
+        }
+      });
+
+      socket.on('user_stop_typing', (data: any) => {
+        if (data.userId !== user?.id && data.roomId === id) {
+          setIsOtherUserTyping(false);
+        }
+      });
+
       const handleMsg = (data: any) => {
         if (data.type === 'KEY_CHANGE_REQUEST') {
           if (data.senderId === user?.id) return; // Don't show request banner to self
@@ -155,9 +229,12 @@ export default function ChatRoomScreen() {
 
       return () => {
         socket.off('receive_message', handleMsg);
+        socket.off('user_status_change');
+        socket.off('user_typing');
+        socket.off('user_stop_typing');
       };
     }
-  }, [socket, encryptionKey, previousKey, candidateKey, isWaitingForApproval, id]);
+  }, [socket, encryptionKey, previousKey, candidateKey, isWaitingForApproval, id, otherUserId]);
 
   const handleIncomingMessage = (data: any) => {
     if (data.senderId === user?.id) return;
@@ -236,6 +313,11 @@ export default function ChatRoomScreen() {
         setShowCodeModal(false);
         setHasDerivedKeyOnce(true);
         setIsRespondingToHandshake(false);
+
+        // Save to local vault
+        if (id && name) {
+          saveSecretCode(id, secretCode, name);
+        }
       } else {
         // This is a NEW key change request (voluntary)
         setCandidateKey(key);
@@ -253,6 +335,26 @@ export default function ChatRoomScreen() {
     } catch (e) {
       console.error('Handshake failed:', e);
       Alert.alert('Handshake Error', 'Secure key derivation failed. Try a different code.');
+    }
+  };
+
+  const handleTyping = (text: string) => {
+    setInputText(text);
+
+    if (socket && isConnected) {
+      if (!isMeTyping) {
+        setIsMeTyping(true);
+        socket.emit('typing', { roomId: id });
+      }
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('stop_typing', { roomId: id });
+        setIsMeTyping(false);
+      }, 3000); 
     }
   };
 
@@ -335,15 +437,20 @@ export default function ChatRoomScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={28} color={theme.accent} />
           </TouchableOpacity>
+
+          <View style={styles.headerAvatarWrapper}>
+            <Avatar name={name || 'Agent'} seed={targetProfile?.avatarSeed} size={40} />
+          </View>
+
           <View style={styles.headerInfo}>
             <Text style={styles.headerName}>
               {name?.split('#')[0]}
               {name?.includes('#') && <Text style={styles.headerDiscriminator}>#{name.split('#')[1]}</Text>}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={[styles.statusDot, { backgroundColor: isConnected ? theme.secondary : theme.primary }]} />
+              <View style={[styles.statusDot, { backgroundColor: isOtherUserOnline ? theme.secondary : theme.textTertiary }]} />
               <Text style={styles.headerStatus}>
-                {isConnected ? (isLocked ? 'Content Encrypted' : 'Secure Connection') : 'Connecting...'}
+                {isOtherUserTyping ? 'Typing...' : (isOtherUserOnline ? 'Online' : 'Offline')}
               </Text>
             </View>
           </View>
@@ -413,7 +520,7 @@ export default function ChatRoomScreen() {
               placeholder="Type a message..."
               placeholderTextColor={theme.textTertiary}
               value={inputText}
-              onChangeText={setInputText}
+              onChangeText={handleTyping}
               multiline
             />
             <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
@@ -477,7 +584,10 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   headerInfo: {
     flex: 1,
-    marginLeft: 15,
+    marginLeft: 12,
+  },
+  headerAvatarWrapper: {
+    marginLeft: 10,
   },
   headerName: {
     fontSize: 18,

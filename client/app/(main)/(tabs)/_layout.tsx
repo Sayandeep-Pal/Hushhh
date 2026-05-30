@@ -37,7 +37,7 @@ export default function TabsLayout() {
         options={{
           title: 'Chats',
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
+            <View>
               <Ionicons name={focused ? "chatbubbles" : "chatbubbles-outline"} size={size} color={color} />
             </View>
           ),
@@ -48,7 +48,7 @@ export default function TabsLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
+            <View >
               <Ionicons name={focused ? "settings" : "settings-outline"} size={size} color={color} />
             </View>
           ),

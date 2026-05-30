@@ -8,6 +8,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 interface Profile {
   id: string;
   username: string;
+  avatarSeed?: string;
 }
 
 interface AuthContextType {
@@ -15,7 +16,7 @@ interface AuthContextType {
   profile: Profile | null;
   token: string | null;
   signOut: () => Promise<void>;
-  signInAnonymously: (username: string) => Promise<void>;
+  signInAnonymously: (username: string, avatarSeed?: string) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const CODENAME_KEY = 'agent_codename';
 const TOKEN_KEY = 'agent_token';
 const USER_ID_KEY = 'agent_user_id';
+const AVATAR_SEED_KEY = 'agent_avatar_seed';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<Profile | null>(null);
@@ -54,27 +56,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
         const storedCodename = await SecureStore.getItemAsync(CODENAME_KEY);
         const storedId = await SecureStore.getItemAsync(USER_ID_KEY);
+        const storedAvatarSeed = await SecureStore.getItemAsync(AVATAR_SEED_KEY);
 
         if (storedToken && storedId && storedCodename) {
           setToken(storedToken);
-          const userData = { id: storedId, username: storedCodename };
+          const userData = { id: storedId, username: storedCodename, avatarSeed: storedAvatarSeed || storedCodename };
           setUser(userData);
           axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-          
+
           // Verify with backend
           try {
             const response = await axios.post(`${API_URL}/api/auth/anonymous`, {
               username: storedCodename,
-              userId: storedId
+              userId: storedId,
+              avatarSeed: storedAvatarSeed
             });
             const { token: newToken, user: updatedUser } = response.data;
             setToken(newToken);
             setUser(updatedUser);
             axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
             await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+            if (updatedUser.avatarSeed) {
+              await SecureStore.setItemAsync(AVATAR_SEED_KEY, updatedUser.avatarSeed);
+            }
           } catch (e) {
             console.error('Token verification failed', e);
-            // If verification fails significantly (e.g. 401), clear the session
             if (axios.isAxiosError(e) && e.response?.status === 401) {
               await signOut();
             }
@@ -90,12 +96,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const signInAnonymously = async (username: string) => {
+  const signInAnonymously = async (username: string, avatarSeed?: string) => {
     try {
       const storedId = await SecureStore.getItemAsync(USER_ID_KEY);
       const response = await axios.post(`${API_URL}/api/auth/anonymous`, {
         username,
-        userId: storedId
+        userId: storedId,
+        avatarSeed
       });
 
       const { token: newToken, user: userData } = response.data;
@@ -107,6 +114,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await SecureStore.setItemAsync(TOKEN_KEY, newToken);
       await SecureStore.setItemAsync(CODENAME_KEY, userData.username);
       await SecureStore.setItemAsync(USER_ID_KEY, userData.id);
+      if (userData.avatarSeed) {
+        await SecureStore.setItemAsync(AVATAR_SEED_KEY, userData.avatarSeed);
+      }
     } catch (e) {
       console.error('Anonymous sign in failed', e);
       throw e;
@@ -117,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await SecureStore.deleteItemAsync(CODENAME_KEY);
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await SecureStore.deleteItemAsync(USER_ID_KEY);
+    await SecureStore.deleteItemAsync(AVATAR_SEED_KEY);
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];

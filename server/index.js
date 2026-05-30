@@ -25,6 +25,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret-agent-key';
 // MongoDB Models
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true },
+  avatarSeed: { type: String },
   pushToken: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
@@ -90,7 +91,7 @@ const generateDiscriminator = () => {
 
 // Anonymous Login / Identity Creation
 app.post('/api/auth/anonymous', async (req, res) => {
-  const { username, userId } = req.body;
+  const { username, userId, avatarSeed } = req.body;
   
   try {
     let user;
@@ -117,18 +118,28 @@ app.post('/api/auth/anonymous', async (req, res) => {
       
       if (!isUnique) return res.status(500).json({ error: 'Could not generate unique identity' });
       
-      user = new User({ username: finalUsername });
+      user = new User({ 
+        username: finalUsername,
+        avatarSeed: avatarSeed || finalUsername 
+      });
       await user.save();
-    } else if (username && user.username !== username) {
-      // If updating, preserve the existing discriminator if possible
-      const baseUsername = username.split('#')[0];
-      const existingDiscriminator = user.username.split('#')[1] || generateDiscriminator();
-      user.username = `${baseUsername}#${existingDiscriminator}`;
-      await user.save();
+    } else {
+      let changed = false;
+      if (username && user.username !== username) {
+        const baseUsername = username.split('#')[0];
+        const existingDiscriminator = user.username.split('#')[1] || generateDiscriminator();
+        user.username = `${baseUsername}#${existingDiscriminator}`;
+        changed = true;
+      }
+      if (avatarSeed && user.avatarSeed !== avatarSeed) {
+        user.avatarSeed = avatarSeed;
+        changed = true;
+      }
+      if (changed) await user.save();
     }
 
     const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-    res.json({ token, user: { id: user._id, username: user.username } });
+    res.json({ token, user: { id: user._id, username: user.username, avatarSeed: user.avatarSeed } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -141,24 +152,46 @@ app.post('/api/auth/anonymous', async (req, res) => {
 app.get('/api/users/recent', authenticate, async (req, res) => {
   try {
     const myId = req.userId;
-    // Find unique roomIds where user participated
-    const roomIds = await Message.distinct('roomId', {
-      roomId: { $regex: myId }
-    });
-
-    // Extract other user IDs
-    const otherUserIds = roomIds.map(roomId => {
-      const parts = roomId.split('_');
-      return parts[0] === myId ? parts[1] : parts[0];
-    }).filter(id => mongoose.Types.ObjectId.isValid(id) && id !== myId);
-
-    const recentUsers = await User.find({ _id: { $in: otherUserIds } }).select('username _id');
     
-    res.json(recentUsers.map(u => ({ 
-      id: u._id, 
-      username: u.username,
-      isOnline: onlineUsers.has(u._id.toString())
-    })));
+    // Find latest messages for each room I'm in
+    const recentMessages = await Message.aggregate([
+      { $match: { roomId: { $regex: myId } } },
+      { $sort: { createdAt: -1 } },
+      { 
+        $group: { 
+          _id: "$roomId", 
+          lastMessageAt: { $first: "$createdAt" },
+          otherUserId: { $first: { 
+            $cond: [
+              { $eq: [{ $arrayElemAt: [{ $split: ["$roomId", "_"] }, 0] }, myId] },
+              { $arrayElemAt: [{ $split: ["$roomId", "_"] }, 1] },
+              { $arrayElemAt: [{ $split: ["$roomId", "_"] }, 0] }
+            ]
+          }}
+        } 
+      },
+      { $sort: { lastMessageAt: -1 } }
+    ]);
+
+    const otherUserIds = recentMessages
+      .map(m => m.otherUserId)
+      .filter(id => mongoose.Types.ObjectId.isValid(id) && id !== myId);
+
+    const recentUsers = await User.find({ _id: { $in: otherUserIds } }).select('username _id avatarSeed');
+    
+    // Maintain the order from aggregation
+    const orderedUsers = otherUserIds.map(id => {
+      const user = recentUsers.find(u => u._id.toString() === id.toString());
+      if (!user) return null;
+      return {
+        id: user._id,
+        username: user.username,
+        avatarSeed: user.avatarSeed,
+        isOnline: onlineUsers.has(user._id.toString())
+      };
+    }).filter(u => u !== null);
+    
+    res.json(orderedUsers);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -171,11 +204,12 @@ app.get('/api/users/search', authenticate, async (req, res) => {
     const users = await User.find({
       username: { $regex: query || '', $options: 'i' },
       _id: { $ne: req.userId }
-    }).limit(10).select('username _id');
+    }).limit(10).select('username _id avatarSeed');
     
     res.json(users.map(u => ({ 
       id: u._id, 
       username: u.username,
+      avatarSeed: u.avatarSeed,
       isOnline: onlineUsers.has(u._id.toString())
     })));
   } catch (e) {
@@ -186,9 +220,9 @@ app.get('/api/users/search', authenticate, async (req, res) => {
 // Single User Fetch
 app.get('/api/users/:id', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('username _id');
+    const user = await User.findById(req.params.id).select('username _id avatarSeed');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ id: user._id, username: user.username, isOnline: onlineUsers.has(user._id.toString()) });
+    res.json({ id: user._id, username: user.username, avatarSeed: user.avatarSeed, isOnline: onlineUsers.has(user._id.toString()) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -285,6 +319,14 @@ io.on('connection', (socket) => {
         roomId: roomId
       });
     }
+  });
+
+  socket.on('typing', (data) => {
+    io.to(data.roomId).emit('user_typing', { userId: socket.userId, roomId: data.roomId });
+  });
+
+  socket.on('stop_typing', (data) => {
+    io.to(data.roomId).emit('user_stop_typing', { userId: socket.userId, roomId: data.roomId });
   });
 
   socket.on('send_message', async (data) => {

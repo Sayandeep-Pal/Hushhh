@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,12 +7,14 @@ import { useAuth } from '../../../context/AuthContext';
 import axios from 'axios';
 import * as Linking from 'expo-linking';
 import QRCode from 'react-native-qrcode-svg';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
 import { handleError, getErrorMessage } from '../../../utils/error-handler';
 import { useSocket } from '@/context/SocketContext';
 import { useTheme } from '../../../hooks/useTheme';
+import { Avatar } from '../../../components/Avatar';
 
 export default function ChatListScreen() {
   const { user, profile, signOut, token } = useAuth();
@@ -22,6 +24,9 @@ export default function ChatListScreen() {
   const [recentChats, setRecentChats] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [shareSecretCode, setShareSecretCode] = useState('');
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -33,7 +38,7 @@ export default function ChatListScreen() {
       console.log('Deep link received:', path, queryParams);
       
       if (path === 'connect' && queryParams?.id) {
-        connectToUser(queryParams.id as string, queryParams.name as string);
+        connectToUser(queryParams.id as string, queryParams.name as string, queryParams.code as string);
       }
     };
 
@@ -66,13 +71,20 @@ export default function ChatListScreen() {
       socket.on('user_status_change', () => {
         fetchData();
       });
+
+      // Refresh recent chats when any message is received
+      socket.on('receive_message', () => {
+        fetchData();
+      });
+
       return () => {
         socket.off('user_status_change');
+        socket.off('receive_message');
       };
     }
   }, [socket]);
 
-  const connectToUser = async (targetId: string, targetName?: string) => {
+  const connectToUser = async (targetId: string, targetName?: string, sharedCode?: string) => {
     if (targetId === user?.id) {
       Alert.alert('Mirror Reality', "You can't chat with yourself... yet.");
       return;
@@ -89,7 +101,11 @@ export default function ChatListScreen() {
       const roomId = [user?.id, targetId].sort().join('_');
       router.push({ 
         pathname: '/(main)/chat/[id]', 
-        params: { id: roomId, name: name || 'Secret Agent' } 
+        params: { 
+          id: roomId, 
+          name: name || 'Secret Agent',
+          sharedCode: sharedCode || ''
+        } 
       });
     } catch (e) {
       console.error('Failed to connect via link', e);
@@ -109,6 +125,31 @@ export default function ChatListScreen() {
     }
   }, [search]);
 
+  const handleBarCodeScanned = ({ data }: { data: string }) => {
+    setShowScanner(false);
+    try {
+      const { path, queryParams } = Linking.parse(data);
+      if (path === 'connect' && queryParams?.id) {
+        connectToUser(queryParams.id as string, queryParams.name as string, queryParams.code as string);
+      } else {
+        Alert.alert('Invalid QR', 'This code is not a valid agent identity.');
+      }
+    } catch (e) {
+      Alert.alert('Scan Error', 'Could not parse the agent identity.');
+    }
+  };
+
+  const startScanning = async () => {
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to scan QR codes.');
+        return;
+      }
+    }
+    setShowScanner(true);
+  };
+
   const performSearch = async () => {
     if (!search || search.length <= 2) return;
     setIsLoading(true);
@@ -126,14 +167,20 @@ export default function ChatListScreen() {
   };
 
   const shareMyIdentity = async () => {
-    const connectUrl = Linking.createURL('connect', {
-      queryParams: { id: user?.id, name: profile?.username },
+    const finalUrl = Linking.createURL('connect', {
+      queryParams: { 
+        id: user?.id, 
+        name: profile?.username,
+        code: shareSecretCode || undefined
+      },
     });
     
     try {
       await Share.share({
-        message: `Connect with me on Fun Chat! My codename is ${profile?.username}. Scan my QR or click here: ${connectUrl}`,
-        url: connectUrl, // iOS only
+        message: shareSecretCode 
+          ? `Connect with me on Fun Chat! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`
+          : `Connect with me on Fun Chat! My codename is ${profile?.username}. Scan my QR or click: ${finalUrl}`,
+        url: finalUrl,
       });
     } catch (e) {
       console.error('Sharing failed', e);
@@ -142,6 +189,7 @@ export default function ChatListScreen() {
 
   const renderUserItem = ({ item }: { item: any }) => {
     const [base, disc] = item.username.split('#');
+    
     return (
       <TouchableOpacity 
         style={styles.chatCard}
@@ -153,8 +201,8 @@ export default function ChatListScreen() {
           });
         }}
       >
-        <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-          <Text style={styles.avatarText}>{base ? base[0].toUpperCase() : '?'}</Text>
+        <View style={styles.avatarWrapper}>
+          <Avatar name={item.username} seed={item.avatarSeed} size={50} />
           {item.isOnline && <View style={styles.onlineBadge} />}
         </View>
         <View style={styles.chatInfo}>
@@ -170,7 +218,11 @@ export default function ChatListScreen() {
   };
 
   const connectUrl = Linking.createURL('connect', {
-    queryParams: { id: user?.id, name: profile?.username },
+    queryParams: { 
+      id: user?.id, 
+      name: profile?.username,
+      code: shareSecretCode || undefined 
+    },
   });
 
   const displayData = search.length > 2 ? searchResults : recentChats;
@@ -187,6 +239,9 @@ export default function ChatListScreen() {
           <Text style={styles.headerTitle}>Chats</Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity onPress={startScanning} style={styles.actionButton}>
+            <Ionicons name="scan-outline" size={24} color={theme.accent} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowIdentityModal(true)} style={styles.actionButton}>
             <Ionicons name="qr-code-outline" size={24} color={theme.accent} />
           </TouchableOpacity>
@@ -197,7 +252,7 @@ export default function ChatListScreen() {
         <Ionicons name="search" size={20} color={theme.textTertiary} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Global Search (Codenames)"
+          placeholder="Search via Codenames"
           placeholderTextColor={theme.textTertiary}
           value={search}
           onChangeText={setSearch}
@@ -212,7 +267,7 @@ export default function ChatListScreen() {
         ListHeaderComponent={
           <>
             {search.length > 2 ? (
-              <Text style={styles.sectionTitle}>Global Intelligence Results</Text>
+              <Text style={styles.sectionTitle}>Search Results</Text>
             ) : (
               recentChats.length > 0 ? (
                 <Text style={styles.sectionTitle}>Recent Encounters</Text>
@@ -242,6 +297,44 @@ export default function ChatListScreen() {
         ListFooterComponent={isLoading ? <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} /> : null}
       />
 
+      {/* QR Scanner Modal */}
+      <Modal visible={showScanner} animationType="slide">
+        <SafeAreaView style={styles.scannerContainer}>
+          <View style={styles.scannerHeader}>
+            <TouchableOpacity onPress={() => setShowScanner(false)} style={styles.closeScanner}>
+              <Ionicons name="close" size={32} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.scannerTitle}>Scan Agent QR</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          
+          <CameraView
+            style={styles.camera}
+            onBarcodeScanned={showScanner ? handleBarCodeScanned : undefined}
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
+          >
+            <View style={styles.overlay}>
+              <View style={styles.unfocusedContainer}></View>
+              <View style={styles.middleContainer}>
+                <View style={styles.unfocusedContainer}></View>
+                <View style={styles.focusedContainer}>
+                  <View style={[styles.corner, styles.topLeft]} />
+                  <View style={[styles.corner, styles.topRight]} />
+                  <View style={[styles.corner, styles.bottomLeft]} />
+                  <View style={[styles.corner, styles.bottomRight]} />
+                </View>
+                <View style={styles.unfocusedContainer}></View>
+              </View>
+              <View style={styles.unfocusedContainer}>
+                <Text style={styles.scannerHint}>Align the agent's QR code within the frame</Text>
+              </View>
+            </View>
+          </CameraView>
+        </SafeAreaView>
+      </Modal>
+
       {/* Identity Modal */}
       <Modal visible={showIdentityModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -256,6 +349,23 @@ export default function ChatListScreen() {
             <Text style={styles.modalTitle}>Your Secret Identity</Text>
             <Text style={styles.modalSubtitle}>Share this QR or link with trusted allies only.</Text>
             
+            <View style={styles.modalAvatarWrapper}>
+              <Avatar name={profile?.username || 'Anonymous'} seed={profile?.avatarSeed} size={80} />
+            </View>
+
+            <View style={styles.shareCodeInputContainer}>
+              <Text style={styles.shareCodeLabel}>Bundle a Secret Code (Optional)</Text>
+              <TextInput
+                style={styles.shareCodeInput}
+                placeholder="e.g. MySecret123"
+                placeholderTextColor={theme.textTertiary}
+                value={shareSecretCode}
+                onChangeText={setShareSecretCode}
+                autoCapitalize="none"
+              />
+              <Text style={styles.shareCodeHint}>If set, your ally will automatically use this code to unlock your chat.</Text>
+            </View>
+
             <View style={styles.qrContainer}>
               <QRCode
                 value={connectUrl}
@@ -335,6 +445,94 @@ const createStyles = (theme: any) => StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
+  },
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#000',
+  },
+  scannerTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  closeScanner: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  camera: {
+    flex: 1,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  unfocusedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  middleContainer: {
+    flexDirection: 'row',
+    height: 250,
+  },
+  focusedContainer: {
+    width: 250,
+    height: 250,
+    position: 'relative',
+  },
+  scannerHint: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  corner: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderColor: '#FF6B6B',
+    borderWidth: 4,
+  },
+  topLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 15,
+  },
+  topRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: 15,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 15,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: 15,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -416,18 +614,9 @@ const createStyles = (theme: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
   },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarWrapper: {
     marginRight: 16,
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFF',
+    position: 'relative',
   },
   chatInfo: {
     flex: 1,
@@ -488,8 +677,42 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontSize: 14,
     color: theme.textSecondary,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
     fontWeight: '500',
+  },
+  modalAvatarWrapper: {
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  shareCodeInputContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  shareCodeLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.text,
+    marginBottom: 8,
+  },
+  shareCodeInput: {
+    height: 55,
+    backgroundColor: theme.background,
+    borderRadius: 15,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: theme.text,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  shareCodeHint: {
+    fontSize: 11,
+    color: theme.textTertiary,
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   qrContainer: {
     padding: 20,
