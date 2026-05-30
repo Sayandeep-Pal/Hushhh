@@ -15,6 +15,7 @@ interface Message {
   senderId: string;
   payload: string; // Emoji string
   text?: string;   // Decrypted text (local only)
+  isOldKey?: boolean;
   timestamp: string;
 }
 
@@ -33,7 +34,10 @@ export default function ChatRoomScreen() {
   const [secretCode, setSecretCode] = useState('');
   const [isLocked, setIsLocked] = useState(true);
   const [encryptionKey, setEncryptionKey] = useState<string | null>(null);
+  const [previousKey, setPreviousKey] = useState<string | null>(null);
   const [showCodeModal, setShowCodeModal] = useState(true);
+  const [showKeyRequest, setShowKeyRequest] = useState(false);
+  const [pendingKeyRequest, setPendingKeyRequest] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
@@ -49,7 +53,7 @@ export default function ChatRoomScreen() {
     if (id) {
       fetchMessageHistory();
     }
-  }, [id, encryptionKey]);
+  }, [id, encryptionKey, previousKey]);
 
   const fetchMessageHistory = async () => {
     setIsRefreshing(true);
@@ -59,12 +63,22 @@ export default function ChatRoomScreen() {
       
       const decryptedMessages = response.data.map((msg: any) => {
         let decryptedText = undefined;
+        let isOldKey = false;
+        
         if (encryptionKey) {
           try {
             decryptedText = decryptMessage(msg.payload, encryptionKey);
-          } catch (e) {
-            // Decryption failed with current key
-          }
+          } catch (e) {}
+        }
+
+        if ((!decryptedText || decryptedText === 'FINGERPRINT_MISMATCH') && previousKey) {
+          try {
+            const oldDecrypted = decryptMessage(msg.payload, previousKey);
+            if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('🔒')) {
+              decryptedText = oldDecrypted;
+              isOldKey = true;
+            }
+          } catch (e) {}
         }
 
         return {
@@ -72,6 +86,7 @@ export default function ChatRoomScreen() {
           senderId: msg.senderId,
           payload: msg.payload,
           text: decryptedText,
+          isOldKey,
           timestamp: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
       });
@@ -89,8 +104,20 @@ export default function ChatRoomScreen() {
       socket.emit('join_room', id);
 
       const handleMsg = (data: any) => {
-        if (data.type === 'KEY_CHANGE') {
-          handleKeyChangeEvent(data);
+        if (data.type === 'KEY_CHANGE_REQUEST') {
+          setPendingKeyRequest(data);
+          setShowKeyRequest(true);
+        } else if (data.type === 'KEY_CHANGE_ACCEPTED') {
+          // If the other person accepted my key change, I don't need to do anything special here
+          // because I already updated my key when I sent the request (simplified)
+          const systemMsg: Message = {
+            id: Date.now().toString(),
+            senderId: 'SYSTEM',
+            payload: '✅',
+            text: `${data.senderName} has accepted the new Secret Code.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, systemMsg]);
         } else {
           handleIncomingMessage(data);
         }
@@ -102,20 +129,55 @@ export default function ChatRoomScreen() {
         socket.off('receive_message', handleMsg);
       };
     }
-  }, [socket, encryptionKey, id]);
+  }, [socket, encryptionKey, previousKey, id]);
 
-  const handleKeyChangeEvent = (data: any) => {
+  const handleIncomingMessage = (data: any) => {
+    if (data.senderId === user?.id) return;
+
+    let decryptedText = undefined;
+    let isOldKey = false;
+    
+    if (encryptionKey) {
+      try {
+        decryptedText = decryptMessage(data.payload, encryptionKey);
+      } catch (e) {}
+    }
+
+    if ((!decryptedText || decryptedText === 'FINGERPRINT_MISMATCH') && previousKey) {
+      try {
+        const oldDecrypted = decryptMessage(data.payload, previousKey);
+        if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('🔒')) {
+          decryptedText = oldDecrypted;
+          isOldKey = true;
+        }
+      } catch (e) {}
+    }
+
     const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: 'SYSTEM',
-      payload: '⚠️',
-      text: `Alert: ${data.senderName} has updated the Secret Code. You must update yours to continue reading.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      id: data.id || Date.now().toString(),
+      senderId: data.senderId,
+      payload: data.payload,
+      text: decryptedText,
+      isOldKey,
+      timestamp: data.createdAt ? new Date(data.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setMessages(prev => [...prev, newMessage]);
-    setIsLocked(true);
+  };
+
+  const handleAcceptKeyChange = () => {
+    setPreviousKey(encryptionKey);
     setEncryptionKey(null);
+    setSecretCode('');
+    setShowKeyRequest(false);
     setShowCodeModal(true);
+    
+    socket?.emit('send_message', {
+      roomId: id,
+      senderId: user?.id,
+      senderName: user?.username,
+      type: 'KEY_CHANGE_ACCEPTED',
+      payload: '🤝'
+    });
   };
 
   const handleUnlock = () => {
@@ -125,16 +187,21 @@ export default function ChatRoomScreen() {
       const salt = 'funchat_secret_salt'; 
       const key = deriveKey(secretCode, salt);
       
+      const isInitialUnlock = !encryptionKey;
+      if (encryptionKey) {
+        setPreviousKey(encryptionKey);
+      }
+      
       setEncryptionKey(key);
       setIsLocked(false);
       setShowCodeModal(false);
 
-      if (!isLocked) {
+      if (!isInitialUnlock) {
         socket?.emit('send_message', {
           roomId: id,
           senderId: user?.id,
           senderName: user?.username,
-          type: 'KEY_CHANGE',
+          type: 'KEY_CHANGE_REQUEST',
           payload: '🔑'
         });
       }
@@ -142,29 +209,6 @@ export default function ChatRoomScreen() {
       console.error('Handshake failed:', e);
       Alert.alert('Handshake Error', 'Secure key derivation failed. Try a different code.');
     }
-  };
-
-  const handleIncomingMessage = (data: any) => {
-    // Prevent double message for sender (don't add if it's from me)
-    if (data.senderId === user?.id) return;
-
-    let decryptedText = undefined;
-    if (encryptionKey) {
-      try {
-        decryptedText = decryptMessage(data.payload, encryptionKey);
-      } catch (e) {
-        // Fail silently
-      }
-    }
-
-    const newMessage: Message = {
-      id: data.id || Date.now().toString(),
-      senderId: data.senderId,
-      payload: data.payload,
-      text: decryptedText,
-      timestamp: data.createdAt ? new Date(data.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => [...prev, newMessage]);
   };
 
   const sendMessage = () => {
@@ -211,19 +255,21 @@ export default function ChatRoomScreen() {
     }
 
     const isMe = item.senderId === user?.id;
+    const isMismatch = item.text === 'FINGERPRINT_MISMATCH';
+    
     return (
       <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.theirMessageWrapper]}>
-        <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
-          <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
-            {item.text || item.payload}
+        <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble, isMismatch && styles.mismatchBubble]}>
+          <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText, isMismatch && styles.mismatchText]}>
+            {isMismatch ? '🔒 Encrypted with a different key' : (item.text || item.payload)}
           </Text>
-          {item.text ? (
+          {item.text && !isMismatch ? (
             <Text style={[styles.maskIndicator, isMe ? {color: 'rgba(255,255,255,0.7)'} : {color: theme.textTertiary}]}>
-              ✨ Decrypted
+              {item.isOldKey ? '⚠️ Decrypted with old key' : '✨ Decrypted'}
             </Text>
           ) : (
             <Text style={[styles.maskIndicator, {color: theme.textTertiary}]}>
-              🔒 Encrypted Emojis
+              {isMismatch ? '⚠️ Mismatch' : '🔒 Encrypted Emojis'}
             </Text>
           )}
         </View>
@@ -245,7 +291,10 @@ export default function ChatRoomScreen() {
             <Ionicons name="chevron-back" size={28} color={theme.accent} />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
-            <Text style={styles.headerName}>{name}</Text>
+            <Text style={styles.headerName}>
+              {name?.split('#')[0]}
+              {name?.includes('#') && <Text style={styles.headerDiscriminator}>#{name.split('#')[1]}</Text>}
+            </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={[styles.statusDot, { backgroundColor: isConnected ? theme.secondary : theme.primary }]} />
               <Text style={styles.headerStatus}>
@@ -281,6 +330,22 @@ export default function ChatRoomScreen() {
           onLayout={() => flatListRef.current?.scrollToEnd()}
         />
 
+        {/* Key Change Request Banner */}
+        {showKeyRequest && (
+          <View style={styles.requestBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.requestTitle}>Key Change Requested</Text>
+              <Text style={styles.requestSubtitle}>{pendingKeyRequest?.senderName} wants to update the Secret Code.</Text>
+            </View>
+            <TouchableOpacity style={styles.acceptButton} onPress={handleAcceptKeyChange}>
+              <Text style={styles.acceptButtonText}>Accept</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowKeyRequest(false)} style={{ marginLeft: 10 }}>
+              <Ionicons name="close" size={24} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* InputArea */}
         {!isLocked && (
           <View style={styles.inputArea}>
@@ -306,10 +371,17 @@ export default function ChatRoomScreen() {
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
+            <TouchableOpacity 
+              style={styles.closeModal} 
+              onPress={() => setShowCodeModal(false)}
+            >
+              <Ionicons name="close" size={28} color={theme.accent} />
+            </TouchableOpacity>
+
             <Text style={styles.modalEmoji}>🔒</Text>
             <Text style={styles.modalTitle}>Enter Secret Code</Text>
             <Text style={styles.modalSubtitle}>
-              Both you and {name} must use the same code to unlock this chat.
+              Both you and {name?.split('#')[0]} must use the same code to unlock this chat.
             </Text>
             <TextInput
               style={styles.modalInput}
@@ -353,6 +425,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontWeight: '700',
     color: theme.text,
   },
+  headerDiscriminator: {
+    fontSize: 12,
+    color: theme.textTertiary,
+    fontWeight: '500',
+  },
   headerStatus: {
     fontSize: 12,
     color: theme.textSecondary,
@@ -394,15 +471,62 @@ const createStyles = (theme: any) => StyleSheet.create({
     shadowRadius: 5,
     elevation: 2,
   },
+  mismatchBubble: {
+    backgroundColor: theme.background,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderStyle: 'dashed',
+  },
   messageText: {
     fontSize: 16,
     lineHeight: 22,
+  },
+  mismatchText: {
+    color: theme.primary,
+    fontStyle: 'italic',
+    fontSize: 14,
   },
   myMessageText: {
     color: '#FFF',
   },
   theirMessageText: {
     color: theme.text,
+  },
+  requestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.surface,
+    padding: 15,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: theme.secondary,
+    shadowColor: theme.cardShadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  requestTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.text,
+  },
+  requestSubtitle: {
+    fontSize: 12,
+    color: theme.textSecondary,
+  },
+  acceptButton: {
+    backgroundColor: theme.secondary,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  acceptButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 12,
   },
   maskIndicator: {
     fontSize: 10,
@@ -475,6 +599,12 @@ const createStyles = (theme: any) => StyleSheet.create({
     borderRadius: 30,
     padding: 30,
     alignItems: 'center',
+  },
+  closeModal: {
+    alignSelf: 'flex-end',
+    marginBottom: -10,
+    marginTop: -10,
+    marginRight: -10,
   },
   modalEmoji: {
     fontSize: 60,

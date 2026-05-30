@@ -41,7 +41,7 @@ export default function OnboardingScreen() {
           <View style={styles.logoContainer}>
             <Text style={styles.logoText}>🕵️‍♂️</Text>
           </View>
-          <Text style={styles.title}>Fun Chat</Text>
+          <Text style={styles.title}>VeilChat</Text>
           <Text style={styles.subtitle}>
             Enter your codename to start chatting securely. No passwords, no emails.
           </Text>

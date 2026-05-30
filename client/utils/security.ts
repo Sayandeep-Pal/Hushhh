@@ -78,11 +78,21 @@ export function deriveKey(secretCode: string, salt: string): string {
 }
 
 /**
+ * Generates a key fingerprint for comparison.
+ * Hash the first 8 chars of the PBKDF2-derived key (hex string).
+ */
+export function getKeyFingerprint(keyHex: string): string {
+  return CryptoJS.SHA256(keyHex.substring(0, 8)).toString().substring(0, 16);
+}
+
+/**
  * Encrypts a plaintext string using AES-256-CBC and hides it in a carrier emoji using Zero-Width steganography.
+ * Attaches a key fingerprint for verification.
  */
 export function encryptMessage(plaintext: string, keyHex: string): string {
   try {
     const key = CryptoJS.enc.Hex.parse(keyHex);
+    const fingerprint = getKeyFingerprint(keyHex);
     
     // Use expo-crypto for secure random IV generation
     const ivBytes = Crypto.getRandomBytes(16);
@@ -96,8 +106,8 @@ export function encryptMessage(plaintext: string, keyHex: string): string {
       padding: CryptoJS.pad.Pkcs7
     });
     
-    // Combine IV + Ciphertext in a format that can be easily recovered
-    const payload = iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.ciphertext.toString(CryptoJS.enc.Hex);
+    // Combine Fingerprint + IV + Ciphertext
+    const payload = fingerprint + ':' + iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.ciphertext.toString(CryptoJS.enc.Hex);
     
     // Encode to Zero-Width
     const hiddenData = encodeToZeroWidth(payload);
@@ -114,20 +124,35 @@ export function encryptMessage(plaintext: string, keyHex: string): string {
 
 /**
  * Decrypts a carrier emoji with hidden zero-width ciphertext using AES-256-CBC.
+ * Verifies the key fingerprint before attempting decryption.
  */
 export function decryptMessage(carrierWithHidden: string, keyHex: string): string {
   try {
     const key = CryptoJS.enc.Hex.parse(keyHex);
+    const currentFingerprint = getKeyFingerprint(keyHex);
     
-    // Extract zero-width data (skip the carrier emoji)
-    // We use a regex to find the zero-width sequence
+    // Extract zero-width data
     const match = carrierWithHidden.match(/[\u200B-\u200D]+/);
     if (!match) return '🔒 [No hidden data]';
     
     const payload = decodeFromZeroWidth(match[0]);
-    const [ivHex, ciphertextHex] = payload.split(':');
+    const parts = payload.split(':');
+    
+    // Handle legacy format (iv:ciphertext) and new format (fingerprint:iv:ciphertext)
+    let fingerprint, ivHex, ciphertextHex;
+    if (parts.length === 3) {
+      [fingerprint, ivHex, ciphertextHex] = parts;
+    } else {
+      [ivHex, ciphertextHex] = parts;
+      fingerprint = null; // Legacy message
+    }
     
     if (!ivHex || !ciphertextHex) return '🔒 [Invalid payload]';
+
+    // Verify fingerprint if present
+    if (fingerprint && fingerprint !== currentFingerprint) {
+      return 'FINGERPRINT_MISMATCH';
+    }
 
     const decrypted = CryptoJS.AES.decrypt(
       { ciphertext: CryptoJS.enc.Hex.parse(ciphertextHex) } as any,
@@ -139,7 +164,9 @@ export function decryptMessage(carrierWithHidden: string, keyHex: string): strin
       }
     );
     
-    return decrypted.toString(CryptoJS.enc.Utf8);
+    const decryptedText = decrypted.toString(CryptoJS.enc.Utf8);
+    if (!decryptedText) throw new Error('Decryption resulted in empty string');
+    return decryptedText;
   } catch (e) {
     console.error('Decryption Failed:', e);
     return '🔒 [Decryption Error]';

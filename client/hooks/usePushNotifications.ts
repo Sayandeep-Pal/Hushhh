@@ -10,6 +10,8 @@ export interface PushNotificationState {
   notification?: Notifications.Notification;
 }
 
+let hasWarnedFirebase = false;
+
 export const usePushNotifications = (): PushNotificationState => {
   const [expoPushToken, setExpoPushToken] = useState<string | undefined>();
   const [notification, setNotification] = useState<Notifications.Notification | undefined>();
@@ -47,15 +49,22 @@ export const usePushNotifications = (): PushNotificationState => {
       }
 
       if (Platform.OS === 'android') {
-        Notifications.setNotificationChannelAsync('default', {
+        await Notifications.setNotificationChannelAsync('default', {
           name: 'default',
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#FF231F7C',
         });
       }
-    } catch (error) {
-      console.error('Error registering for push notifications:', error);
+    } catch (error: any) {
+      if (error.message?.includes('FirebaseApp is not initialized')) {
+        if (!hasWarnedFirebase) {
+          console.warn('Push Notifications: Firebase not initialized. For Android development builds, ensure google-services.json is present and configured in app.json.');
+          hasWarnedFirebase = true;
+        }
+      } else {
+        console.error('Error registering for push notifications:', error);
+      }
     }
 
     return token;

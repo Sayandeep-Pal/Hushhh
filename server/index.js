@@ -77,6 +77,16 @@ mongoose.connect(MONGO_URI)
 
 // Routes
 
+// Helper to generate unique discriminator
+const generateDiscriminator = () => {
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
 // Anonymous Login / Identity Creation
 app.post('/api/auth/anonymous', async (req, res) => {
   const { username, userId } = req.body;
@@ -88,14 +98,31 @@ app.post('/api/auth/anonymous', async (req, res) => {
     }
     
     if (!user) {
-      // Check if username taken
-      const existing = await User.findOne({ username });
-      if (existing) return res.status(400).json({ error: 'Codename already taken' });
+      // Strip any existing hash to avoid double-discriminators
+      const baseUsername = (username || 'Agent').split('#')[0];
+      let finalUsername;
+      let isUnique = false;
+      let attempts = 0;
       
-      user = new User({ username });
+      while (!isUnique && attempts < 10) {
+        const discriminator = generateDiscriminator();
+        finalUsername = `${baseUsername}#${discriminator}`;
+        const existing = await User.findOne({ username: finalUsername });
+        if (!existing) {
+          isUnique = true;
+        }
+        attempts++;
+      }
+      
+      if (!isUnique) return res.status(500).json({ error: 'Could not generate unique identity' });
+      
+      user = new User({ username: finalUsername });
       await user.save();
     } else if (username && user.username !== username) {
-      user.username = username;
+      // If updating, preserve the existing discriminator if possible
+      const baseUsername = username.split('#')[0];
+      const existingDiscriminator = user.username.split('#')[1] || generateDiscriminator();
+      user.username = `${baseUsername}#${existingDiscriminator}`;
       await user.save();
     }
 
@@ -106,16 +133,8 @@ app.post('/api/auth/anonymous', async (req, res) => {
   }
 });
 
-// Online Users
-app.get('/api/users/online', authenticate, async (req, res) => {
-  try {
-    const userIds = Array.from(onlineUsers.keys()).filter(id => id !== req.userId);
-    const users = await User.find({ _id: { $in: userIds } }).select('username _id');
-    res.json(users.map(u => ({ id: u._id, username: u.username, isOnline: true })));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+// Online Users - DELETED as per Phase 1 (Privacy)
+// app.get('/api/users/online', authenticate, ...)
 
 // Recent Chats
 app.get('/api/users/recent', authenticate, async (req, res) => {

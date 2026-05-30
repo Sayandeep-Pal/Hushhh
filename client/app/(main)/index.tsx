@@ -51,12 +51,9 @@ export default function ChatListScreen() {
   const fetchData = async () => {
     if (!token) return;
     try {
-      const [onlineRes, recentRes] = await Promise.all([
-        axios.get(`${API_URL}/api/users/online`),
-        axios.get(`${API_URL}/api/users/recent`)
-      ]);
-      setOnlineUsers(onlineRes.data);
+      const recentRes = await axios.get(`${API_URL}/api/users/recent`);
       setRecentChats(recentRes.data);
+      setOnlineUsers([]); // Online users list removed for privacy
     } catch (e) {
       console.error('Failed to fetch initial data', e);
     }
@@ -145,54 +142,64 @@ export default function ChatListScreen() {
     }
   };
 
-  const renderUserItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.chatCard}
-      onPress={() => {
-        const roomId = [user?.id, item.id].sort().join('_');
-        router.push({ 
-          pathname: '/(main)/chat/[id]', 
-          params: { id: roomId, name: item.username } 
-        });
-      }}
-    >
-      <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-        <Text style={styles.avatarText}>{item.username[0].toUpperCase()}</Text>
-        {item.isOnline && <View style={styles.onlineBadge} />}
-      </View>
-      <View style={styles.chatInfo}>
-        <Text style={styles.chatName}>{item.username}</Text>
-        <Text style={styles.lastEmoji}>{item.isOnline ? 'Online now' : 'Found in records'}</Text>
-      </View>
-      <Ionicons name="finger-print-outline" size={20} color={item.isOnline ? theme.secondary : theme.accent} />
-    </TouchableOpacity>
-  );
-
-  const renderOnlineUser = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.onlineUserContainer}
-      onPress={() => {
-        const roomId = [user?.id, item.id].sort().join('_');
-        router.push({ 
-          pathname: '/(main)/chat/[id]', 
-          params: { id: roomId, name: item.username } 
-        });
-      }}
-    >
-      <View style={[styles.onlineAvatar, { borderColor: theme.secondary }]}>
-        <View style={[styles.avatarInner, { backgroundColor: theme.accent }]}>
-          <Text style={styles.avatarText}>{item.username[0].toUpperCase()}</Text>
+  const renderUserItem = ({ item }: { item: any }) => {
+    const [base, disc] = item.username.split('#');
+    return (
+      <TouchableOpacity 
+        style={styles.chatCard}
+        onPress={() => {
+          const roomId = [user?.id, item.id].sort().join('_');
+          router.push({ 
+            pathname: '/(main)/chat/[id]', 
+            params: { id: roomId, name: item.username } 
+          });
+        }}
+      >
+        <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
+          <Text style={styles.avatarText}>{base ? base[0].toUpperCase() : '?'}</Text>
+          {item.isOnline && <View style={styles.onlineBadge} />}
         </View>
-      </View>
-      <Text style={styles.onlineUsername} numberOfLines={1}>{item.username}</Text>
-    </TouchableOpacity>
-  );
+        <View style={styles.chatInfo}>
+          <Text style={styles.chatName}>
+            {base}
+            {disc && <Text style={styles.discriminator}>#{disc}</Text>}
+          </Text>
+          <Text style={styles.lastEmoji}>{item.isOnline ? 'Online now' : 'Found in records'}</Text>
+        </View>
+        <Ionicons name="finger-print-outline" size={20} color={item.isOnline ? theme.secondary : theme.accent} />
+      </TouchableOpacity>
+    );
+  };
+
+  const renderOnlineUser = ({ item }: { item: any }) => {
+    const [base, disc] = item.username.split('#');
+    return (
+      <TouchableOpacity 
+        style={styles.onlineUserContainer}
+        onPress={() => {
+          const roomId = [user?.id, item.id].sort().join('_');
+          router.push({ 
+            pathname: '/(main)/chat/[id]', 
+            params: { id: roomId, name: item.username } 
+          });
+        }}
+      >
+        <View style={[styles.onlineAvatar, { borderColor: theme.secondary }]}>
+          <View style={[styles.avatarInner, { backgroundColor: theme.accent }]}>
+            <Text style={styles.avatarText}>{base ? base[0].toUpperCase() : '?'}</Text>
+          </View>
+        </View>
+        <Text style={styles.onlineUsername} numberOfLines={1}>{base}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const connectUrl = Linking.createURL('connect', {
     queryParams: { id: user?.id, name: profile?.username },
   });
 
   const displayData = search.length > 2 ? searchResults : recentChats;
+  const [profileBase, profileDisc] = (profile?.username || 'Anonymous').split('#');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -202,7 +209,10 @@ export default function ChatListScreen() {
             <View style={[styles.statusDot, { backgroundColor: isConnected ? theme.secondary : theme.primary }]} />
             <Text style={styles.greeting}>{isConnected ? 'Agent active' : 'Offline'}</Text>
           </View>
-          <Text style={styles.headerTitle}>{profile?.username || 'Anonymous'}</Text>
+          <Text style={styles.headerTitle}>
+            {profileBase}
+            {profileDisc && <Text style={styles.headerDiscriminator}>#{profileDisc}</Text>}
+          </Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={() => setShowIdentityModal(true)} style={styles.actionButton}>
@@ -232,20 +242,6 @@ export default function ChatListScreen() {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <>
-            {onlineUsers.length > 0 && !search && (
-              <View style={styles.onlineSection}>
-                <Text style={styles.sectionTitle}>Active Agents</Text>
-                <FlatList
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  data={onlineUsers}
-                  renderItem={renderOnlineUser}
-                  keyExtractor={item => item.id}
-                  contentContainerStyle={styles.onlineList}
-                />
-              </View>
-            )}
-
             {search.length > 2 ? (
               <Text style={styles.sectionTitle}>Global Intelligence Results</Text>
             ) : (
@@ -300,7 +296,10 @@ export default function ChatListScreen() {
               />
             </View>
             
-            <Text style={styles.codenameText}>{profile?.username}</Text>
+            <Text style={styles.codenameText}>
+              {profileBase}
+              {profileDisc && <Text style={styles.modalDiscriminator}>#{profileDisc}</Text>}
+            </Text>
             
             <TouchableOpacity style={styles.shareButton} onPress={shareMyIdentity}>
               <Ionicons name="share-social-outline" size={20} color="#FFF" />
@@ -345,6 +344,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontWeight: '900',
     color: theme.text,
     letterSpacing: -1,
+  },
+  headerDiscriminator: {
+    fontSize: 16,
+    color: theme.textTertiary,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
@@ -464,6 +468,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontWeight: '800',
     color: theme.text,
   },
+  discriminator: {
+    fontSize: 13,
+    color: theme.textTertiary,
+    fontWeight: '500',
+  },
   lastEmoji: {
     fontSize: 13,
     color: theme.textTertiary,
@@ -530,6 +539,12 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: theme.text,
     marginBottom: 30,
     letterSpacing: 2,
+  },
+  modalDiscriminator: {
+    fontSize: 14,
+    color: theme.textTertiary,
+    fontWeight: '500',
+    letterSpacing: 0,
   },
   onlineSection: {
     marginBottom: 24,

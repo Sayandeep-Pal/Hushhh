@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "747469620357",
+    "project_id": "mindful-coder-471908-g2",
+    "storage_bucket": "mindful-coder-471908-g2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:747469620357:android:8a16f2cba3d9e0987c55ec",
+        "android_client_info": {
+          "package_name": "com.sayandeep06.client"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZJ7v7_qvWN25DVIpBWImUCf6g1sd1YpM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
