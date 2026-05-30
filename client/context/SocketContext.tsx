@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import * as Notifications from 'expo-notifications';
+import { Audio } from 'expo-av';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -20,10 +21,31 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isConnected, setIsConnected] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const activeRoomRef = useRef<string | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
 
   useEffect(() => {
     activeRoomRef.current = activeRoomId;
   }, [activeRoomId]);
+
+  async function playNotificationSound() {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3' }
+      );
+      setSound(sound);
+      await sound.playAsync();
+    } catch (e) {
+      console.error('Failed to play sound', e);
+    }
+  }
+
+  useEffect(() => {
+    return sound
+      ? () => {
+          sound.unloadAsync();
+        }
+      : undefined;
+  }, [sound]);
 
   useEffect(() => {
     if (token) {
@@ -34,10 +56,18 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       newSocket.on('connect', () => setIsConnected(true));
       newSocket.on('disconnect', () => setIsConnected(false));
 
-      // Global message listener for local notifications
+      // Global message listener for local notifications and sound
       newSocket.on('receive_message', async (data) => {
-        // Only notify if message is from someone else AND we are not in that room
-        if (data.senderId !== user?.id && data.roomId !== activeRoomRef.current) {
+        // Skip if message is from self
+        if (data.senderId === user?.id) return;
+
+        // Only play sound if we ARE in that specific room
+        if (data.roomId === activeRoomRef.current) {
+          await playNotificationSound();
+        }
+
+        // Only show local notification if we are NOT in that room
+        if (data.roomId !== activeRoomRef.current) {
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'New Secure Message 🔒',

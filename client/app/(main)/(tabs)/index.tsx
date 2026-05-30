@@ -19,7 +19,6 @@ export default function ChatListScreen() {
   const { isConnected, socket } = useSocket();
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [recentChats, setRecentChats] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
@@ -53,7 +52,6 @@ export default function ChatListScreen() {
     try {
       const recentRes = await axios.get(`${API_URL}/api/users/recent`);
       setRecentChats(recentRes.data);
-      setOnlineUsers([]); // Online users list removed for privacy
     } catch (e) {
       console.error('Failed to fetch initial data', e);
     }
@@ -167,29 +165,6 @@ export default function ChatListScreen() {
           <Text style={styles.lastEmoji}>{item.isOnline ? 'Online now' : 'Found in records'}</Text>
         </View>
         <Ionicons name="finger-print-outline" size={20} color={item.isOnline ? theme.secondary : theme.accent} />
-      </TouchableOpacity>
-    );
-  };
-
-  const renderOnlineUser = ({ item }: { item: any }) => {
-    const [base, disc] = item.username.split('#');
-    return (
-      <TouchableOpacity 
-        style={styles.onlineUserContainer}
-        onPress={() => {
-          const roomId = [user?.id, item.id].sort().join('_');
-          router.push({ 
-            pathname: '/(main)/chat/[id]', 
-            params: { id: roomId, name: item.username } 
-          });
-        }}
-      >
-        <View style={[styles.onlineAvatar, { borderColor: theme.secondary }]}>
-          <View style={[styles.avatarInner, { backgroundColor: theme.accent }]}>
-            <Text style={styles.avatarText}>{base ? base[0].toUpperCase() : '?'}</Text>
-          </View>
-        </View>
-        <Text style={styles.onlineUsername} numberOfLines={1}>{base}</Text>
       </TouchableOpacity>
     );
   };
@@ -539,51 +514,6 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: theme.textTertiary,
     fontWeight: '500',
     letterSpacing: 0,
-  },
-  onlineSection: {
-    marginBottom: 24,
-  },
-  onlineList: {
-    paddingRight: 24,
-  },
-  onlineUserContainer: {
-    alignItems: 'center',
-    marginRight: 20,
-    width: 70,
-  },
-  onlineAvatar: {
-    width: 66,
-    height: 66,
-    borderRadius: 24,
-    borderWidth: 2,
-    padding: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  avatarInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  onlineUsername: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.text,
-    textAlign: 'center',
-  },
-  onlineBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: theme.secondary,
-    borderWidth: 2,
-    borderColor: theme.surface,
   },
   shareButton: {
     flexDirection: 'row',
