@@ -57,6 +57,7 @@ const authenticate = (req, res, next) => {
 
 // Socket.io Tracking
 const onlineUsers = new Map(); // userId -> socketId (simplified)
+const pendingHandshakes = new Map(); // roomId -> { requesterId, requesterName }
 
 // Socket.io Auth Middleware
 io.use((socket, next) => {
@@ -273,10 +274,43 @@ io.on('connection', (socket) => {
 
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
+    
+    // Check if there is a pending handshake for this room
+    if (pendingHandshakes.has(roomId)) {
+      const handshake = pendingHandshakes.get(roomId);
+      socket.emit('receive_message', {
+        type: 'KEY_CHANGE_REQUEST',
+        senderId: handshake.requesterId,
+        senderName: handshake.requesterName,
+        roomId: roomId
+      });
+    }
   });
 
   socket.on('send_message', async (data) => {
     try {
+      // Handle Handshake events
+      if (data.type === 'KEY_CHANGE_REQUEST') {
+        pendingHandshakes.set(data.roomId, {
+          requesterId: data.senderId,
+          requesterName: data.senderName
+        });
+        io.to(data.roomId).emit('receive_message', data);
+        return;
+      }
+      
+      if (data.type === 'KEY_CHANGE_ACCEPTED') {
+        pendingHandshakes.delete(data.roomId);
+        io.to(data.roomId).emit('receive_message', data);
+        return;
+      }
+
+      if (data.type === 'KEY_CHANGE_REJECTED') {
+        pendingHandshakes.delete(data.roomId);
+        io.to(data.roomId).emit('receive_message', data);
+        return;
+      }
+
       const newMessage = new Message({
         roomId: data.roomId,
         senderId: data.senderId,

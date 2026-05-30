@@ -35,12 +35,18 @@ export default function ChatRoomScreen() {
   const [isLocked, setIsLocked] = useState(true);
   const [encryptionKey, setEncryptionKey] = useState<string | null>(null);
   const [previousKey, setPreviousKey] = useState<string | null>(null);
+  const [candidateKey, setCandidateKey] = useState<string | null>(null);
+  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
   const [showCodeModal, setShowCodeModal] = useState(true);
   const [showKeyRequest, setShowKeyRequest] = useState(false);
   const [pendingKeyRequest, setPendingKeyRequest] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRespondingToHandshake, setIsRespondingToHandshake] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+
+  // Keep track if we have EVER had a key this session
+  const [hasDerivedKeyOnce, setHasDerivedKeyOnce] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -105,16 +111,38 @@ export default function ChatRoomScreen() {
 
       const handleMsg = (data: any) => {
         if (data.type === 'KEY_CHANGE_REQUEST') {
+          if (data.senderId === user?.id) return; // Don't show request banner to self
           setPendingKeyRequest(data);
           setShowKeyRequest(true);
         } else if (data.type === 'KEY_CHANGE_ACCEPTED') {
-          // If the other person accepted my key change, I don't need to do anything special here
-          // because I already updated my key when I sent the request (simplified)
+          if (data.senderId !== user?.id && isWaitingForApproval) {
+            // The other person accepted my request
+            setPreviousKey(encryptionKey);
+            setEncryptionKey(candidateKey);
+            setCandidateKey(null);
+            setIsWaitingForApproval(false);
+          }
+          
           const systemMsg: Message = {
             id: Date.now().toString(),
             senderId: 'SYSTEM',
             payload: '✅',
             text: `${data.senderName} has accepted the new Secret Code.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, systemMsg]);
+        } else if (data.type === 'KEY_CHANGE_REJECTED') {
+          if (isWaitingForApproval) {
+            setCandidateKey(null);
+            setIsWaitingForApproval(false);
+            Alert.alert('Key Change Rejected', `${data.senderName} declined the key update. Continuing with previous key.`);
+          }
+          
+          const systemMsg: Message = {
+            id: Date.now().toString(),
+            senderId: 'SYSTEM',
+            payload: '❌',
+            text: `${data.senderName} rejected the key change request.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
           setMessages(prev => [...prev, systemMsg]);
@@ -129,7 +157,7 @@ export default function ChatRoomScreen() {
         socket.off('receive_message', handleMsg);
       };
     }
-  }, [socket, encryptionKey, previousKey, id]);
+  }, [socket, encryptionKey, previousKey, candidateKey, isWaitingForApproval, id]);
 
   const handleIncomingMessage = (data: any) => {
     if (data.senderId === user?.id) return;
@@ -169,6 +197,7 @@ export default function ChatRoomScreen() {
     setEncryptionKey(null);
     setSecretCode('');
     setShowKeyRequest(false);
+    setIsRespondingToHandshake(true);
     setShowCodeModal(true);
     
     socket?.emit('send_message', {
@@ -180,6 +209,19 @@ export default function ChatRoomScreen() {
     });
   };
 
+  const handleRejectKeyChange = () => {
+    setShowKeyRequest(false);
+    setPendingKeyRequest(null);
+    
+    socket?.emit('send_message', {
+      roomId: id,
+      senderId: user?.id,
+      senderName: user?.username,
+      type: 'KEY_CHANGE_REJECTED',
+      payload: '🚫'
+    });
+  };
+
   const handleUnlock = () => {
     if (!secretCode) return;
     
@@ -187,16 +229,19 @@ export default function ChatRoomScreen() {
       const salt = 'funchat_secret_salt'; 
       const key = deriveKey(secretCode, salt);
       
-      const isInitialUnlock = !encryptionKey;
-      if (encryptionKey) {
-        setPreviousKey(encryptionKey);
-      }
-      
-      setEncryptionKey(key);
-      setIsLocked(false);
-      setShowCodeModal(false);
-
-      if (!isInitialUnlock) {
+      if (!hasDerivedKeyOnce || isRespondingToHandshake) {
+        // Initial unlock OR responding to an accepted handshake
+        setEncryptionKey(key);
+        setIsLocked(false);
+        setShowCodeModal(false);
+        setHasDerivedKeyOnce(true);
+        setIsRespondingToHandshake(false);
+      } else {
+        // This is a NEW key change request (voluntary)
+        setCandidateKey(key);
+        setIsWaitingForApproval(true);
+        setShowCodeModal(false);
+        
         socket?.emit('send_message', {
           roomId: id,
           senderId: user?.id,
@@ -303,12 +348,8 @@ export default function ChatRoomScreen() {
             </View>
           </View>
           <TouchableOpacity onPress={() => {
-            if (!isLocked) {
-              // Relock or change code
-              setIsLocked(true);
-              setEncryptionKey(null);
-              setSecretCode('');
-            }
+            // Just open the modal to change code, don't clear the key yet!
+            // Handshake logic will handle the transition.
             setShowCodeModal(true);
           }}>
             <Ionicons 
@@ -332,16 +373,34 @@ export default function ChatRoomScreen() {
 
         {/* Key Change Request Banner */}
         {showKeyRequest && (
-          <View style={styles.requestBanner}>
+          <View style={[styles.requestBanner, { backgroundColor: theme.surface, borderTopWidth: 4, borderTopColor: theme.secondary }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.requestTitle}>Key Change Requested</Text>
+              <Text style={styles.requestTitle}>Key Change Requested 🔑</Text>
               <Text style={styles.requestSubtitle}>{pendingKeyRequest?.senderName} wants to update the Secret Code.</Text>
             </View>
-            <TouchableOpacity style={styles.acceptButton} onPress={handleAcceptKeyChange}>
-              <Text style={styles.acceptButtonText}>Accept</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowKeyRequest(false)} style={{ marginLeft: 10 }}>
-              <Ionicons name="close" size={24} color={theme.textSecondary} />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={styles.rejectButton} onPress={handleRejectKeyChange}>
+                <Text style={styles.rejectButtonText}>Reject</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.acceptButton} onPress={handleAcceptKeyChange}>
+                <Text style={styles.acceptButtonText}>Accept</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Waiting for Approval Banner */}
+        {isWaitingForApproval && (
+          <View style={[styles.requestBanner, { backgroundColor: theme.surface, borderTopWidth: 4, borderTopColor: theme.primary }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.requestTitle}>Waiting for Approval... ⏳</Text>
+              <Text style={styles.requestSubtitle}>Sent request to {name?.split('#')[0]}.</Text>
+            </View>
+            <TouchableOpacity onPress={() => {
+              setIsWaitingForApproval(false);
+              setCandidateKey(null);
+            }}>
+              <Ionicons name="close-circle" size={28} color={theme.primary} />
             </TouchableOpacity>
           </View>
         )}
@@ -525,6 +584,19 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   acceptButtonText: {
     color: '#FFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  rejectButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.primary,
+  },
+  rejectButtonText: {
+    color: theme.primary,
     fontWeight: '700',
     fontSize: 12,
   },
