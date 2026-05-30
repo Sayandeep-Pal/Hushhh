@@ -3,16 +3,16 @@ import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, Activity
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../../context/AuthContext';
 import axios from 'axios';
 import * as Linking from 'expo-linking';
 import QRCode from 'react-native-qrcode-svg';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
-import { handleError, getErrorMessage } from '../../utils/error-handler';
+import { handleError, getErrorMessage } from '../../../utils/error-handler';
 import { useSocket } from '@/context/SocketContext';
-import { useTheme } from '../../hooks/useTheme';
+import { useTheme } from '../../../hooks/useTheme';
 
 export default function ChatListScreen() {
   const { user, profile, signOut, token } = useAuth();
@@ -209,17 +209,11 @@ export default function ChatListScreen() {
             <View style={[styles.statusDot, { backgroundColor: isConnected ? theme.secondary : theme.primary }]} />
             <Text style={styles.greeting}>{isConnected ? 'Agent active' : 'Offline'}</Text>
           </View>
-          <Text style={styles.headerTitle}>
-            {profileBase}
-            {profileDisc && <Text style={styles.headerDiscriminator}>#{profileDisc}</Text>}
-          </Text>
+          <Text style={styles.headerTitle}>Chats</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={() => setShowIdentityModal(true)} style={styles.actionButton}>
             <Ionicons name="qr-code-outline" size={24} color={theme.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={signOut} style={styles.actionButton}>
-            <Ionicons name="log-out-outline" size={24} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
