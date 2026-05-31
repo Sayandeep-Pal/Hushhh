@@ -27,6 +27,7 @@ const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true },
   avatarSeed: { type: String },
   pushToken: { type: String },
+  lastSeen: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -155,7 +156,6 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
     const myId = req.userId;
     const myObjectId = new mongoose.Types.ObjectId(myId);
     
-    console.log(`[DEBUG] Fetching recent chats for user: ${myId}`);
     // Find latest messages and unread counts for each room I'm in
     const recentMessages = await Message.aggregate([
       { 
@@ -196,13 +196,11 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
       { $sort: { lastMessageAt: -1 } }
     ]);
 
-    console.log(`[DEBUG] Aggregation result:`, JSON.stringify(recentMessages, null, 2));
-
     const otherUserIds = recentMessages
       .map(m => m.otherUserId)
       .filter(id => mongoose.Types.ObjectId.isValid(id) && id !== myId);
 
-    const recentUsers = await User.find({ _id: { $in: otherUserIds } }).select('username _id avatarSeed');
+    const recentUsers = await User.find({ _id: { $in: otherUserIds } }).select('username _id avatarSeed lastSeen');
     
     // Maintain the order from aggregation
     const orderedUsers = recentMessages.map(m => {
@@ -213,6 +211,7 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
         username: user.username,
         avatarSeed: user.avatarSeed,
         isOnline: onlineUsers.has(user._id.toString()),
+        lastSeen: user.lastSeen,
         lastMessage: m.lastMessage,
         lastMessageAt: m.lastMessageAt,
         unreadCount: m.unreadCount
@@ -251,13 +250,14 @@ app.get('/api/users/search', authenticate, async (req, res) => {
     const users = await User.find({
       username: { $regex: query || '', $options: 'i' },
       _id: { $ne: req.userId }
-    }).limit(10).select('username _id avatarSeed');
+    }).limit(10).select('username _id avatarSeed lastSeen');
     
     res.json(users.map(u => ({ 
       id: u._id, 
       username: u.username,
       avatarSeed: u.avatarSeed,
-      isOnline: onlineUsers.has(u._id.toString())
+      isOnline: onlineUsers.has(u._id.toString()),
+      lastSeen: u.lastSeen
     })));
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -345,13 +345,14 @@ const sendPushNotification = async (userId, senderUsername, roomId) => {
 };
 
 // Socket.io
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   const userId = socket.userId;
   console.log('User connected:', socket.id, 'UserId:', userId);
 
   if (userId) {
     onlineUsers.set(userId, socket.id);
     socket.join(`user_${userId}`);
+    await User.findByIdAndUpdate(userId, { lastSeen: new Date() });
     io.emit('user_status_change', { userId: userId, status: 'online' });
   }
 
@@ -436,13 +437,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     const userId = socket.userId;
     console.log('User disconnected:', socket.id, 'UserId:', userId);
     if (userId) {
       // Only remove if this was the last socket for this user
       // (Simplified: assuming one connection per user for now)
       onlineUsers.delete(userId);
+      await User.findByIdAndUpdate(userId, { lastSeen: new Date() });
       io.emit('user_status_change', { userId: userId, status: 'offline' });
     }
   });

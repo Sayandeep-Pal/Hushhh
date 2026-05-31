@@ -56,12 +56,6 @@ export default function ChatListScreen() {
     if (!token) return;
     try {
       const recentRes = await axios.get(`${API_URL}/api/users/recent`);
-      // LOG: Show exactly how many messages are coming from each user
-      recentRes.data.forEach((chat: any) => {
-        if (chat.unreadCount > 0) {
-          console.log(`[DEBUG] New messages from ${chat.username}: ${chat.unreadCount}`);
-        }
-      });
       setRecentChats(recentRes.data);
     } catch (error: any) {
       console.log("ERROR", error);
@@ -207,6 +201,20 @@ export default function ChatListScreen() {
     }
   };
 
+  const formatLastSeen = (isOnline: boolean, lastSeen?: string) => {
+    if (isOnline) return 'Online now';
+    if (!lastSeen) return 'Found in records';
+    
+    const date = new Date(lastSeen);
+    const now = new Date();
+    const diffInSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSecs < 60) return 'Last seen just now';
+    if (diffInSecs < 3600) return `Last seen ${Math.floor(diffInSecs / 60)}m ago`;
+    if (diffInSecs < 86400) return `Last seen ${Math.floor(diffInSecs / 3600)}h ago`;
+    return `Last seen ${Math.floor(diffInSecs / 86400)}d ago`;
+  };
+
   const renderUserItem = ({ item }: { item: any }) => {
     const [base, disc] = item.username.split('#');
     
@@ -231,7 +239,7 @@ export default function ChatListScreen() {
             {disc && <Text style={styles.discriminator}>#{disc}</Text>}
           </Text>
           <Text style={styles.lastEmoji} numberOfLines={1}>
-            {item.lastMessage ? `🔒 ${item.lastMessage}` : (item.isOnline ? 'Online now' : 'Found in records')}
+            {item.lastMessage ? item.lastMessage : formatLastSeen(item.isOnline, item.lastSeen)}
           </Text>
         </View>
         <View style={styles.chatMeta}>
