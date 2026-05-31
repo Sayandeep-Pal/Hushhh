@@ -116,8 +116,10 @@ export default function ChatRoomScreen() {
 
   const markMessagesAsRead = async () => {
     try {
+      console.log(`[DEBUG] Attempting to mark messages as read for room: ${id}`);
       const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
-      await axios.post(`${API_URL}/api/messages/read/${id}`);
+      const response = await axios.post(`${API_URL}/api/messages/read/${id}`);
+      console.log(`[DEBUG] Mark as read response:`, response.data);
     } catch (error: any) {
       console.log("Error marking messages as read:", error?.message);
     }

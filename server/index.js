@@ -183,7 +183,7 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
             $sum: {
               $cond: [
                 { $and: [
-                  { $ne: ["$senderId", myObjectId] },
+                  { $ne: [{ $toString: "$senderId" }, myId.toString()] },
                   { $ne: ["$isRead", true] }
                 ]},
                 1,
@@ -195,6 +195,9 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
       },
       { $sort: { lastMessageAt: -1 } }
     ]);
+
+    // DEBUG: Log the unread counts specifically
+    console.log(`[DEBUG] Unread counts for ${myId}:`, recentMessages.map(m => ({ room: m._id, unread: m.unreadCount })));
 
     const otherUserIds = recentMessages
       .map(m => m.otherUserId)
@@ -228,15 +231,21 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
 app.post('/api/messages/read/:roomId', authenticate, async (req, res) => {
   try {
     const { roomId } = req.params;
-    const myId = req.userId;
+    const myId = req.userId.toString();
     const myObjectId = new mongoose.Types.ObjectId(myId);
     
+    console.log(`[READ_MESSAGES] User ${myId} marking room ${roomId} as read`);
+    
     const result = await Message.updateMany(
-      { roomId, senderId: { $ne: myObjectId }, isRead: false },
+      { 
+        roomId, 
+        senderId: { $ne: myObjectId }, 
+        isRead: { $ne: true } 
+      },
       { $set: { isRead: true } }
     );
     
-    console.log(`[DEBUG] Marked ${result.modifiedCount} messages as read in room ${roomId} for user ${myId}`);
+    console.log(`[READ_MESSAGES] Result: matched ${result.matchedCount}, modified ${result.modifiedCount}`);
     
     // Notify the user's sockets to refresh unread counts
     io.to(`user_${myId}`).emit('messages_read', { roomId });

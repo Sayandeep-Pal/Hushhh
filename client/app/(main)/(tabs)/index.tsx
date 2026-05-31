@@ -213,22 +213,23 @@ export default function ChatListScreen() {
     }
   };
 
-  const formatLastSeen = (isOnline: boolean, lastSeen?: string) => {
-    if (isOnline) return 'Online now';
-    if (!lastSeen) return 'Found in records';
+  const formatLastSeenCompact = (isOnline: boolean, lastSeen?: string) => {
+    if (isOnline) return 'Online';
+    if (!lastSeen) return '';
     
     const date = new Date(lastSeen);
     const now = new Date();
     const diffInSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
     
-    if (diffInSecs < 60) return 'Last seen just now';
-    if (diffInSecs < 3600) return `Last seen ${Math.floor(diffInSecs / 60)}m ago`;
-    if (diffInSecs < 86400) return `Last seen ${Math.floor(diffInSecs / 3600)}h ago`;
-    return `Last seen ${Math.floor(diffInSecs / 86400)}d ago`;
+    if (diffInSecs < 60) return 'now';
+    if (diffInSecs < 3600) return `${Math.floor(diffInSecs / 60)}m`;
+    if (diffInSecs < 86400) return `${Math.floor(diffInSecs / 3600)}h`;
+    return `${Math.floor(diffInSecs / 86400)}d`;
   };
 
   const renderUserItem = ({ item }: { item: any }) => {
     const [base, disc] = item.username.split('#');
+    const status = formatLastSeenCompact(item.isOnline, item.lastSeen);
     
     return (
       <TouchableOpacity 
@@ -251,15 +252,18 @@ export default function ChatListScreen() {
             {disc && <Text style={styles.discriminator}>#{disc}</Text>}
           </Text>
           <Text style={styles.lastEmoji} numberOfLines={1}>
-            {item.lastMessage ? item.lastMessage : formatLastSeen(item.isOnline, item.lastSeen)}
+            <Text style={{ color: item.isOnline ? theme.secondary : theme.textTertiary, fontWeight: '700' }}>
+              {status}{status ? ' • ' : ''}
+            </Text>
+            {item.lastMessage || 'No records yet'}
           </Text>
         </View>
         <View style={styles.chatMeta}>
           <View style={styles.badgeRow}>
-            {item.unreadCount > 0 && (
+            {Number(item.unreadCount) > 0 && (
               <View style={styles.unreadBadge}>
                 <Text style={styles.unreadCountText}>
-                  {item.unreadCount > 9 ? '9+' : item.unreadCount}
+                  {Number(item.unreadCount) > 9 ? '9+' : item.unreadCount}
                 </Text>
               </View>
             )}
