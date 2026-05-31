@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import axios from 'axios';
@@ -64,6 +64,12 @@ export default function ChatListScreen() {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [token])
+  );
+
   useEffect(() => {
     fetchData();
   }, [token]);
@@ -82,12 +88,18 @@ export default function ChatListScreen() {
         }, 500);
       };
 
+      const handleRead = () => {
+        fetchData();
+      };
+
       socket.on('user_status_change', handleStatusChange);
       socket.on('receive_message', handleMessage);
+      socket.on('messages_read', handleRead);
 
       return () => {
         socket.off('user_status_change', handleStatusChange);
         socket.off('receive_message', handleMessage);
+        socket.off('messages_read', handleRead);
       };
     }
   }, [socket]);

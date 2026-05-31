@@ -237,6 +237,10 @@ app.post('/api/messages/read/:roomId', authenticate, async (req, res) => {
     );
     
     console.log(`[DEBUG] Marked ${result.modifiedCount} messages as read in room ${roomId} for user ${myId}`);
+    
+    // Notify the user's sockets to refresh unread counts
+    io.to(`user_${myId}`).emit('messages_read', { roomId });
+    
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
