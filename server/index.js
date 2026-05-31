@@ -34,6 +34,7 @@ const messageSchema = new mongoose.Schema({
   roomId: { type: String, required: true, index: true },
   senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'funchatUser', required: true },
   payload: { type: String, required: true }, // Emoji string
+  isRead: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -67,7 +68,7 @@ io.use((socket, next) => {
   
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return next();
-    socket.userId = decoded.userId;
+    socket.userId = decoded.userId.toString();
     next();
   });
 });
@@ -152,26 +153,50 @@ app.post('/api/auth/anonymous', async (req, res) => {
 app.get('/api/users/recent', authenticate, async (req, res) => {
   try {
     const myId = req.userId;
+    const myObjectId = new mongoose.Types.ObjectId(myId);
     
-    // Find latest messages for each room I'm in
+    console.log(`[DEBUG] Fetching recent chats for user: ${myId}`);
+    // Find latest messages and unread counts for each room I'm in
     const recentMessages = await Message.aggregate([
-      { $match: { roomId: { $regex: myId } } },
+      { 
+        $match: { 
+          $or: [
+            { roomId: { $regex: `^${myId}_` } },
+            { roomId: { $regex: `_${myId}$` } }
+          ]
+        } 
+      },
       { $sort: { createdAt: -1 } },
       { 
         $group: { 
           _id: "$roomId", 
           lastMessageAt: { $first: "$createdAt" },
+          lastMessage: { $first: "$payload" },
           otherUserId: { $first: { 
             $cond: [
               { $eq: [{ $arrayElemAt: [{ $split: ["$roomId", "_"] }, 0] }, myId] },
               { $arrayElemAt: [{ $split: ["$roomId", "_"] }, 1] },
               { $arrayElemAt: [{ $split: ["$roomId", "_"] }, 0] }
             ]
-          }}
+          }},
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { $and: [
+                  { $ne: ["$senderId", myObjectId] },
+                  { $ne: ["$isRead", true] }
+                ]},
+                1,
+                0
+              ]
+            }
+          }
         } 
       },
       { $sort: { lastMessageAt: -1 } }
     ]);
+
+    console.log(`[DEBUG] Aggregation result:`, JSON.stringify(recentMessages, null, 2));
 
     const otherUserIds = recentMessages
       .map(m => m.otherUserId)
@@ -180,18 +205,40 @@ app.get('/api/users/recent', authenticate, async (req, res) => {
     const recentUsers = await User.find({ _id: { $in: otherUserIds } }).select('username _id avatarSeed');
     
     // Maintain the order from aggregation
-    const orderedUsers = otherUserIds.map(id => {
-      const user = recentUsers.find(u => u._id.toString() === id.toString());
+    const orderedUsers = recentMessages.map(m => {
+      const user = recentUsers.find(u => u._id.toString() === m.otherUserId.toString());
       if (!user) return null;
       return {
         id: user._id,
         username: user.username,
         avatarSeed: user.avatarSeed,
-        isOnline: onlineUsers.has(user._id.toString())
+        isOnline: onlineUsers.has(user._id.toString()),
+        lastMessage: m.lastMessage,
+        lastMessageAt: m.lastMessageAt,
+        unreadCount: m.unreadCount
       };
     }).filter(u => u !== null);
     
     res.json(orderedUsers);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Mark messages as read
+app.post('/api/messages/read/:roomId', authenticate, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const myId = req.userId;
+    const myObjectId = new mongoose.Types.ObjectId(myId);
+    
+    const result = await Message.updateMany(
+      { roomId, senderId: { $ne: myObjectId }, isRead: false },
+      { $set: { isRead: true } }
+    );
+    
+    console.log(`[DEBUG] Marked ${result.modifiedCount} messages as read in room ${roomId} for user ${myId}`);
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -299,11 +346,13 @@ const sendPushNotification = async (userId, senderUsername, roomId) => {
 
 // Socket.io
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id, 'UserId:', socket.userId);
+  const userId = socket.userId;
+  console.log('User connected:', socket.id, 'UserId:', userId);
 
-  if (socket.userId) {
-    onlineUsers.set(socket.userId, socket.id);
-    io.emit('user_status_change', { userId: socket.userId, status: 'online' });
+  if (userId) {
+    onlineUsers.set(userId, socket.id);
+    socket.join(`user_${userId}`);
+    io.emit('user_status_change', { userId: userId, status: 'online' });
   }
 
   socket.on('join_room', (roomId) => {
@@ -360,18 +409,23 @@ io.on('connection', (socket) => {
       });
       await newMessage.save();
       
-      // Broadcast to room
-      io.to(data.roomId).emit('receive_message', {
+      const messageData = {
         ...data,
         id: newMessage._id,
         createdAt: newMessage.createdAt
-      });
+      };
 
       // Handle Push Notifications for the recipient
       const [id1, id2] = data.roomId.split('_');
       const recipientId = id1 === data.senderId ? id2 : id1;
 
-      // Check if recipient is online
+      // Broadcast to room AND both users' private rooms (for homepage updates)
+      io.to(data.roomId)
+        .to(`user_${data.senderId}`)
+        .to(`user_${recipientId}`)
+        .emit('receive_message', messageData);
+
+      // Handle Push Notifications if recipient is offline
       if (recipientId && !onlineUsers.has(recipientId)) {
         // Fetch sender username for notification
         const sender = await User.findById(data.senderId);
@@ -383,12 +437,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    if (socket.userId) {
+    const userId = socket.userId;
+    console.log('User disconnected:', socket.id, 'UserId:', userId);
+    if (userId) {
       // Only remove if this was the last socket for this user
       // (Simplified: assuming one connection per user for now)
-      onlineUsers.delete(socket.userId);
-      io.emit('user_status_change', { userId: socket.userId, status: 'offline' });
+      onlineUsers.delete(userId);
+      io.emit('user_status_change', { userId: userId, status: 'offline' });
     }
   });
 });

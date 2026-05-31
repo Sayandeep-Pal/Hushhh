@@ -56,6 +56,12 @@ export default function ChatListScreen() {
     if (!token) return;
     try {
       const recentRes = await axios.get(`${API_URL}/api/users/recent`);
+      // LOG: Show exactly how many messages are coming from each user
+      recentRes.data.forEach((chat: any) => {
+        if (chat.unreadCount > 0) {
+          console.log(`[DEBUG] New messages from ${chat.username}: ${chat.unreadCount}`);
+        }
+      });
       setRecentChats(recentRes.data);
     } catch (error: any) {
       console.log("ERROR", error);
@@ -70,18 +76,24 @@ export default function ChatListScreen() {
 
   useEffect(() => {
     if (socket) {
-      socket.on('user_status_change', () => {
+      const handleStatusChange = () => {
         fetchData();
-      });
+      };
 
-      // Refresh recent chats when any message is received
-      socket.on('receive_message', () => {
-        fetchData();
-      });
+      const handleMessage = (data: any) => {
+        // Add a small delay to ensure the backend has finished saving to DB 
+        // before we fetch the updated list
+        setTimeout(() => {
+          fetchData();
+        }, 500);
+      };
+
+      socket.on('user_status_change', handleStatusChange);
+      socket.on('receive_message', handleMessage);
 
       return () => {
-        socket.off('user_status_change');
-        socket.off('receive_message');
+        socket.off('user_status_change', handleStatusChange);
+        socket.off('receive_message', handleMessage);
       };
     }
   }, [socket]);
@@ -218,9 +230,22 @@ export default function ChatListScreen() {
             {base}
             {disc && <Text style={styles.discriminator}>#{disc}</Text>}
           </Text>
-          <Text style={styles.lastEmoji}>{item.isOnline ? 'Online now' : 'Found in records'}</Text>
+          <Text style={styles.lastEmoji} numberOfLines={1}>
+            {item.lastMessage ? `🔒 ${item.lastMessage}` : (item.isOnline ? 'Online now' : 'Found in records')}
+          </Text>
         </View>
-        <Ionicons name="finger-print-outline" size={20} color={item.isOnline ? theme.secondary : theme.accent} />
+        <View style={styles.chatMeta}>
+          <View style={styles.badgeRow}>
+            {item.unreadCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadCountText}>
+                  {item.unreadCount > 9 ? '9+' : item.unreadCount}
+                </Text>
+              </View>
+            )}
+            <Ionicons name="finger-print-outline" size={20} color={item.isOnline ? theme.secondary : theme.accent} />
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -628,6 +653,33 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   chatInfo: {
     flex: 1,
+  },
+  chatMeta: {
+    justifyContent: 'center',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  unreadBadge: {
+    backgroundColor: theme.primary,
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    shadowColor: theme.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  unreadCountText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '900',
   },
   chatName: {
     fontSize: 18,

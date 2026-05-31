@@ -109,9 +109,19 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     if (id) {
       setActiveRoomId(id);
+      markMessagesAsRead();
       return () => setActiveRoomId(null);
     }
   }, [id]);
+
+  const markMessagesAsRead = async () => {
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
+      await axios.post(`${API_URL}/api/messages/read/${id}`);
+    } catch (error: any) {
+      console.log("Error marking messages as read:", error?.message);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -169,23 +179,23 @@ export default function ChatRoomScreen() {
     if (socket) {
       socket.emit('join_room', id);
 
-      socket.on('user_status_change', (data: any) => {
+      const handleStatusChange = (data: any) => {
         if (data.userId === otherUserId) {
           setIsOtherUserOnline(data.status === 'online');
         }
-      });
+      };
 
-      socket.on('user_typing', (data: any) => {
+      const handleTyping = (data: any) => {
         if (data.userId !== user?.id && data.roomId === id) {
           setIsOtherUserTyping(true);
         }
-      });
+      };
 
-      socket.on('user_stop_typing', (data: any) => {
+      const handleStopTyping = (data: any) => {
         if (data.userId !== user?.id && data.roomId === id) {
           setIsOtherUserTyping(false);
         }
-      });
+      };
 
       const handleMsg = (data: any) => {
         if (data.type === 'KEY_CHANGE_REQUEST') {
@@ -226,16 +236,21 @@ export default function ChatRoomScreen() {
           setMessages(prev => [...prev, systemMsg]);
         } else {
           handleIncomingMessage(data);
+          // If we are in the room, mark new incoming messages as read
+          markMessagesAsRead();
         }
       };
 
+      socket.on('user_status_change', handleStatusChange);
+      socket.on('user_typing', handleTyping);
+      socket.on('user_stop_typing', handleStopTyping);
       socket.on('receive_message', handleMsg);
 
       return () => {
+        socket.off('user_status_change', handleStatusChange);
+        socket.off('user_typing', handleTyping);
+        socket.off('user_stop_typing', handleStopTyping);
         socket.off('receive_message', handleMsg);
-        socket.off('user_status_change');
-        socket.off('user_typing');
-        socket.off('user_stop_typing');
       };
     }
   }, [socket, encryptionKey, previousKey, candidateKey, isWaitingForApproval, id, otherUserId]);
