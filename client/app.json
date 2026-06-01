@@ -40,8 +40,9 @@
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -65,12 +66,6 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-local-authentication",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow Hush to access your camera to scan agent QR codes."
-        }
-      ],
       [
         "expo-notifications",
         {

@@ -48,9 +48,6 @@ export default function SettingsScreen() {
       await signInAnonymously(newCodename, currentAvatarSeed);
       Alert.alert('Success', 'Your identity has been updated.');
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
       Alert.alert('Update Failed', error.message || 'Could not update your profile.');
     } finally {
       setIsUpdatingProfile(false);
@@ -93,9 +90,6 @@ export default function SettingsScreen() {
       setConfirmPasscode('');
       Alert.alert('Success', 'App passcode has been set.');
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     }
   };
 

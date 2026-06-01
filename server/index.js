@@ -392,6 +392,22 @@ io.on('connection', async (socket) => {
     io.to(data.roomId).emit('user_stop_typing', { userId: socket.userId, roomId: data.roomId });
   });
 
+  socket.on('delete_message', async (data) => {
+    try {
+      const { messageId, roomId } = data;
+      const message = await Message.findById(messageId);
+      
+      if (message && message.senderId.toString() === socket.userId) {
+        message.isDeleted = true;
+        await message.save();
+        
+        io.to(roomId).emit('message_deleted', { messageId });
+      }
+    } catch (e) {
+      console.error('Failed to delete message', e);
+    }
+  });
+
   socket.on('send_message', async (data) => {
     try {
       // Handle Handshake events
@@ -439,8 +455,8 @@ io.on('connection', async (socket) => {
         .to(`user_${recipientId}`)
         .emit('receive_message', messageData);
 
-      // Handle Push Notifications if recipient is offline
-      if (recipientId && !onlineUsers.has(recipientId)) {
+      // Always send Push Notification to recipient (Client handles foreground suppression)
+      if (recipientId && recipientId !== data.senderId) {
         // Fetch sender username for notification
         const sender = await User.findById(data.senderId);
         sendPushNotification(recipientId, sender ? sender.username : 'Someone', data.roomId);

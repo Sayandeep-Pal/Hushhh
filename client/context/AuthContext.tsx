@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { usePushNotifications } from '../hooks/usePushNotifications';
@@ -40,11 +41,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await axios.post(`${API_URL}/api/users/push-token`, {
             pushToken: expoPushToken
           });
-          console.log('Push token registered successfully');
         } catch (error: any) {
-          console.log("ERROR", error);
-          console.log("RESPONSE", error?.response?.data);
-          console.log("MESSAGE", error?.message);
+          // If this fails in the APK, it might be due to API_URL issues or network
+          Alert.alert('Push Registration Failed', `Could not save notification token on server: ${error.message}`);
         }
       }
     };
@@ -82,18 +81,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               await SecureStore.setItemAsync(AVATAR_SEED_KEY, updatedUser.avatarSeed);
             }
           } catch (error: any) {
-            console.log("ERROR", error);
-            console.log("RESPONSE", error?.response?.data);
-            console.log("MESSAGE", error?.message);
             if (axios.isAxiosError(error) && error.response?.status === 401) {
               await signOut();
             }
           }
         }
       } catch (error: any) {
-        console.log("ERROR", error);
-        console.log("RESPONSE", error?.response?.data);
-        console.log("MESSAGE", error?.message);
       } finally {
         setIsLoading(false);
       }
@@ -124,9 +117,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await SecureStore.setItemAsync(AVATAR_SEED_KEY, userData.avatarSeed);
       }
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
       throw error;
     }
   };

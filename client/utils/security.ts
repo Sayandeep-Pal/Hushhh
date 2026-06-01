@@ -62,7 +62,6 @@ function decodeFromZeroWidth(zwString: string): string {
     const bytes = CryptoJS.enc.Hex.parse(hexResult);
     return bytes.toString(CryptoJS.enc.Utf8);
   } catch (e) {
-    console.error('Zero-Width Decode Error:', e);
     return '';
   }
 }
@@ -117,7 +116,6 @@ export function encryptMessage(plaintext: string, keyHex: string): string {
     
     return carrier + hiddenData;
   } catch (e) {
-    console.error('Encryption Failed:', e);
     return '⚠️ Encryption Error';
   }
 }
@@ -168,7 +166,6 @@ export function decryptMessage(carrierWithHidden: string, keyHex: string): strin
     if (!decryptedText) throw new Error('Decryption resulted in empty string');
     return decryptedText;
   } catch (e) {
-    console.error('Decryption Failed:', e);
     return '🔒 [Decryption Error]';
   }
 }

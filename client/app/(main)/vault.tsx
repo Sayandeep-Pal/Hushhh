@@ -1,19 +1,50 @@
-import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useSecurity } from '../../context/SecurityContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Avatar } from '../../components/Avatar';
 
 export default function VaultScreen() {
-  const { vault } = useSecurity();
+  const { vault, isBiometricEnabled, isPasscodeEnabled } = useSecurity();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  const isSecurityEnabled = isBiometricEnabled || isPasscodeEnabled;
+
+  const authenticate = async () => {
+    if (!isSecurityEnabled) return;
+    
+    setIsAuthenticating(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock Secret Vault',
+        fallbackLabel: 'Use App Passcode',
+      });
+
+      if (result.success) {
+        setIsAuthenticated(true);
+      }
+    } catch (error) {
+      Alert.alert('Authentication Error', 'Could not verify identity.');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isSecurityEnabled) {
+      authenticate();
+    }
+  }, [isSecurityEnabled]);
 
   const copyToClipboard = async (code: string, id: string) => {
     await Clipboard.setStringAsync(code);
@@ -23,10 +54,73 @@ export default function VaultScreen() {
 
   const vaultEntries = Object.entries(vault).sort((a, b) => b[1].updatedAt - a[1].updatedAt);
 
+  if (!isSecurityEnabled) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace('/(main)')} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={28} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Secret Vault</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.lockedContainer}>
+          <Ionicons name="shield-outline" size={80} color={theme.primary} />
+          <Text style={styles.lockedTitle}>Vault Insecure</Text>
+          <Text style={styles.lockedText}>
+            To protect your secret keys, you must enable Biometric Lock or an App Passcode in Settings.
+          </Text>
+          <TouchableOpacity 
+            style={styles.settingsButton}
+            onPress={() => router.push('/(main)/(tabs)/settings')}
+          >
+            <Text style={styles.settingsButtonText}>Go to Settings</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace('/(main)')} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={28} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Secret Vault</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.lockedContainer}>
+          <Ionicons name="lock-closed-outline" size={80} color={theme.textTertiary} />
+          <Text style={styles.lockedTitle}>Vault Locked</Text>
+          <Text style={styles.lockedText}>
+            Identity verification is required to access your encryption keys.
+          </Text>
+          <TouchableOpacity 
+            style={styles.unlockButton}
+            onPress={authenticate}
+            disabled={isAuthenticating}
+          >
+            <Text style={styles.unlockButtonText}>
+              {isAuthenticating ? 'Verifying...' : 'Unlock Vault'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(main)');
+          }
+        }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color={theme.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Secret Vault</Text>
@@ -106,6 +200,49 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
     color: theme.text,
+  },
+  lockedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  lockedTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: theme.text,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  lockedText: {
+    fontSize: 16,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 30,
+    fontWeight: '500',
+  },
+  settingsButton: {
+    backgroundColor: theme.primary,
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 18,
+  },
+  settingsButtonText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  unlockButton: {
+    backgroundColor: theme.accent,
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 18,
+  },
+  unlockButtonText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 16,
   },
   scrollContent: {
     padding: 20,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Image } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Image, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +27,7 @@ export default function ChatRoomScreen() {
   const { id, name, sharedCode } = useLocalSearchParams<{ id: string, name: string, sharedCode?: string }>();
   const { user } = useAuth();
   const { socket, isConnected, setActiveRoomId } = useSocket();
-  const { saveSecretCode } = useSecurity();
+  const { saveSecretCode, vault } = useSecurity();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -36,16 +36,22 @@ export default function ChatRoomScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [secretCode, setSecretCode] = useState('');
-  const [isLocked, setIsLocked] = useState(true);
+  const [isLocked, setIsLocked] = useState(!sharedCode);
   const [encryptionKey, setEncryptionKey] = useState<string | null>(null);
   const [previousKey, setPreviousKey] = useState<string | null>(null);
   const [candidateKey, setCandidateKey] = useState<string | null>(null);
+  const [candidateSecretCode, setCandidateSecretCode] = useState<string | null>(null);
   const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
-  const [showCodeModal, setShowCodeModal] = useState(true);
+  const [showCodeModal, setShowCodeModal] = useState(!sharedCode);
   const [showKeyRequest, setShowKeyRequest] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [pendingKeyRequest, setPendingKeyRequest] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRespondingToHandshake, setIsRespondingToHandshake] = useState(false);
+  
+  // Selection state
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   
   // Presence and Typing states
   const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
@@ -57,6 +63,21 @@ export default function ChatRoomScreen() {
 
   // Keep track if we have EVER had a key this session
   const [hasDerivedKeyOnce, setHasDerivedKeyOnce] = useState(false);
+
+  // Auto-unlock from vault if available
+  useEffect(() => {
+    if (id && vault[id] && !encryptionKey && isLocked && !sharedCode) {
+      try {
+        const storedCode = vault[id].code;
+        const salt = 'funchat_secret_salt';
+        const key = deriveKey(storedCode, salt);
+        setEncryptionKey(key);
+        setIsLocked(false);
+        setShowCodeModal(false);
+        setHasDerivedKeyOnce(true);
+      } catch (e) {}
+    }
+  }, [id, vault, sharedCode]);
 
   // Auto-apply shared code if provided
   useEffect(() => {
@@ -79,7 +100,6 @@ export default function ChatRoomScreen() {
         };
         setMessages(prev => [systemMsg, ...prev]);
       } catch (e) {
-        console.error('Failed to apply shared code', e);
       }
     }
   }, [sharedCode]);
@@ -98,9 +118,6 @@ export default function ChatRoomScreen() {
         setTargetProfile(response.data);
         setIsOtherUserOnline(response.data.isOnline);
       } catch (error: any) {
-        console.log("ERROR", error);
-        console.log("RESPONSE", error?.response?.data);
-        console.log("MESSAGE", error?.message);
       }
       };
       fetchTargetProfile();
@@ -116,12 +133,9 @@ export default function ChatRoomScreen() {
 
   const markMessagesAsRead = async () => {
     try {
-      console.log(`[DEBUG] Attempting to mark messages as read for room: ${id}`);
       const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
       const response = await axios.post(`${API_URL}/api/messages/read/${id}`);
-      console.log(`[DEBUG] Mark as read response:`, response.data);
     } catch (error: any) {
-      console.log("Error marking messages as read:", error?.message);
     }
   };
 
@@ -169,9 +183,6 @@ export default function ChatRoomScreen() {
       
       setMessages(decryptedMessages);
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     } finally {
       setIsRefreshing(false);
     }
@@ -209,7 +220,14 @@ export default function ChatRoomScreen() {
             // The other person accepted my request
             setPreviousKey(encryptionKey);
             setEncryptionKey(candidateKey);
+            
+            // Save newly accepted code to vault
+            if (id && name && candidateSecretCode) {
+              saveSecretCode(id, candidateSecretCode, name);
+            }
+            
             setCandidateKey(null);
+            setCandidateSecretCode(null);
             setIsWaitingForApproval(false);
           }
           
@@ -243,19 +261,52 @@ export default function ChatRoomScreen() {
         }
       };
 
+      const handleDeleted = (data: { messageId: string }) => {
+        setMessages(prev => prev.filter(m => m.id !== data.messageId));
+      };
+
       socket.on('user_status_change', handleStatusChange);
       socket.on('user_typing', handleTyping);
       socket.on('user_stop_typing', handleStopTyping);
       socket.on('receive_message', handleMsg);
+      socket.on('message_deleted', handleDeleted);
 
       return () => {
         socket.off('user_status_change', handleStatusChange);
         socket.off('user_typing', handleTyping);
         socket.off('user_stop_typing', handleStopTyping);
         socket.off('receive_message', handleMsg);
+        socket.off('message_deleted', handleDeleted);
       };
     }
   }, [socket, encryptionKey, previousKey, candidateKey, isWaitingForApproval, id, otherUserId]);
+
+  const handleCopyMessage = async () => {
+    if (selectedMessage?.text) {
+      await Clipboard.setStringAsync(selectedMessage.text);
+      setShowActionMenu(false);
+      setSelectedMessage(null);
+    }
+  };
+
+  const handleDeleteForMe = () => {
+    if (selectedMessage) {
+      setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
+      setShowActionMenu(false);
+      setSelectedMessage(null);
+    }
+  };
+
+  const handleDeleteForEveryone = () => {
+    if (selectedMessage && socket) {
+      socket.emit('delete_message', { 
+        messageId: selectedMessage.id, 
+        roomId: id 
+      });
+      setShowActionMenu(false);
+      setSelectedMessage(null);
+    }
+  };
 
   const handleIncomingMessage = (data: any) => {
     if (data.senderId === user?.id) return;
@@ -290,9 +341,6 @@ export default function ChatRoomScreen() {
       };
       setMessages(prev => [...prev, newMessage]);
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     }
   };
 
@@ -313,9 +361,6 @@ export default function ChatRoomScreen() {
         payload: '🤝'
       });
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     }
   };
 
@@ -332,9 +377,6 @@ export default function ChatRoomScreen() {
         payload: '🚫'
       });
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     }
   };
 
@@ -360,6 +402,7 @@ export default function ChatRoomScreen() {
       } else {
         // This is a NEW key change request (voluntary)
         setCandidateKey(key);
+        setCandidateSecretCode(secretCode);
         setIsWaitingForApproval(true);
         setShowCodeModal(false);
         
@@ -372,9 +415,6 @@ export default function ChatRoomScreen() {
         });
       }
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
       Alert.alert('Handshake Error', 'Secure key derivation failed. Try a different code.');
     }
   };
@@ -427,9 +467,6 @@ export default function ChatRoomScreen() {
       setMessages(prev => [...prev, newMessage]);
       setInputText('');
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
       handleError(error, 'Transmission Failed');
     }
   };
@@ -450,7 +487,18 @@ export default function ChatRoomScreen() {
     
     return (
       <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.theirMessageWrapper]}>
-        <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble, isMismatch && styles.mismatchBubble]}>
+        <Pressable 
+          onLongPress={() => {
+            setSelectedMessage(item);
+            setShowActionMenu(true);
+          }}
+          style={({ pressed }) => [
+            styles.messageBubble, 
+            isMe ? styles.myBubble : styles.theirBubble, 
+            isMismatch && styles.mismatchBubble,
+            pressed && { opacity: 0.7 }
+          ]}
+        >
           <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText, isMismatch && styles.mismatchText]}>
             {isMismatch ? '🔒 Encrypted with a different key' : (item.text || item.payload)}
           </Text>
@@ -463,7 +511,7 @@ export default function ChatRoomScreen() {
               {isMismatch ? '⚠️ Mismatch' : '🔒 Encrypted Emojis'}
             </Text>
           )}
-        </View>
+        </Pressable>
         <Text style={styles.messageTime}>{item.timestamp}</Text>
       </View>
     );
@@ -478,7 +526,13 @@ export default function ChatRoomScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(main)');
+            }
+          }}>
             <Ionicons name="chevron-back" size={28} color={theme.accent} />
           </TouchableOpacity>
 
@@ -574,6 +628,52 @@ export default function ChatRoomScreen() {
         )}
       </KeyboardAvoidingView>
 
+      {/* Action Menu Modal */}
+      <Modal visible={showActionMenu} transparent animationType="fade">
+        <Pressable 
+          style={styles.modalOverlay} 
+          onPress={() => {
+            setShowActionMenu(false);
+            setSelectedMessage(null);
+          }}
+        >
+          <View style={styles.actionMenuContent}>
+            <Text style={styles.actionMenuTitle} numberOfLines={1}>
+              {selectedMessage?.text || 'Message Actions'}
+            </Text>
+            
+            {selectedMessage?.text && (
+              <TouchableOpacity style={styles.actionItem} onPress={handleCopyMessage}>
+                <Ionicons name="copy-outline" size={22} color={theme.text} />
+                <Text style={styles.actionItemText}>Copy Message</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.actionItem} onPress={handleDeleteForMe}>
+              <Ionicons name="trash-outline" size={22} color={theme.text} />
+              <Text style={styles.actionItemText}>Delete for me</Text>
+            </TouchableOpacity>
+
+            {selectedMessage?.senderId === user?.id && (
+              <TouchableOpacity style={[styles.actionItem, styles.deleteAction]} onPress={handleDeleteForEveryone}>
+                <Ionicons name="trash" size={22} color={theme.primary} />
+                <Text style={[styles.actionItemText, { color: theme.primary }]}>Delete for everyone</Text>
+              </TouchableOpacity>
+            )}
+            
+            <TouchableOpacity 
+              style={[styles.actionItem, { borderBottomWidth: 0, marginTop: 10 }]} 
+              onPress={() => {
+                setShowActionMenu(false);
+                setSelectedMessage(null);
+              }}
+            >
+              <Text style={[styles.actionItemText, { textAlign: 'center', width: '100%', color: theme.textTertiary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* Secret Code Modal */}
       <Modal visible={showCodeModal} transparent animationType="slide">
         <KeyboardAvoidingView 
@@ -593,15 +693,27 @@ export default function ChatRoomScreen() {
             <Text style={styles.modalSubtitle}>
               Both you and {name?.split('#')[0]} must use the same code to unlock this chat.
             </Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. BlueDragon2026"
-              placeholderTextColor={theme.textTertiary}
-              value={secretCode}
-              onChangeText={setSecretCode}
-              secureTextEntry
-              autoFocus
-            />
+            <View style={styles.modalInputWrapper}>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. BlueDragon2026"
+                placeholderTextColor={theme.textTertiary}
+                value={secretCode}
+                onChangeText={setSecretCode}
+                secureTextEntry={!showSecret}
+                autoFocus
+              />
+              <TouchableOpacity 
+                style={styles.eyeButton} 
+                onPress={() => setShowSecret(!showSecret)}
+              >
+                <Ionicons 
+                  name={showSecret ? "eye-off" : "eye"} 
+                  size={22} 
+                  color={theme.textTertiary} 
+                />
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity style={styles.unlockButton} onPress={handleUnlock}>
               <Text style={styles.unlockButtonText}>Unlock Chat</Text>
             </TouchableOpacity>
@@ -848,17 +960,30 @@ const createStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
+  modalInputWrapper: {
+    width: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
   modalInput: {
     width: '100%',
     height: 60,
     backgroundColor: theme.background,
     borderRadius: 15,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: 50,
     fontSize: 16,
-    marginBottom: 20,
     borderWidth: 1,
     borderColor: theme.border,
     color: theme.text,
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 15,
+    height: '100%',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
   },
   unlockButton: {
     width: '100%',
@@ -877,5 +1002,41 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: '#FFF',
     fontSize: 18,
     fontWeight: '700',
+  },
+  actionMenuContent: {
+    width: '90%',
+    backgroundColor: theme.surface,
+    borderRadius: 25,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  actionMenuTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.textSecondary,
+    marginBottom: 20,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    gap: 12,
+  },
+  actionItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  deleteAction: {
+    borderBottomWidth: 0,
   },
 });

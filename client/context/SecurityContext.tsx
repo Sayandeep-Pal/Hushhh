@@ -56,9 +56,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setIsAppLocked(false);
         }
       } catch (error: any) {
-        console.log("ERROR", error);
-        console.log("RESPONSE", error?.response?.data);
-        console.log("MESSAGE", error?.message);
         setIsAppLocked(false);
       }
       };

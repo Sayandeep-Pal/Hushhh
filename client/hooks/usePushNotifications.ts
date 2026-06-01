@@ -2,15 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 
 export interface PushNotificationState {
   expoPushToken?: string;
   notification?: Notifications.Notification;
 }
-
-let hasWarnedFirebase = false;
 
 export const usePushNotifications = (): PushNotificationState => {
   const [expoPushToken, setExpoPushToken] = useState<string | undefined>();
@@ -23,6 +21,15 @@ export const usePushNotifications = (): PushNotificationState => {
   async function registerForPushNotificationsAsync() {
     let token;
     
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF6B6B',
+      });
+    }
+
     try {
       if (Device.isDevice) {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -32,38 +39,22 @@ export const usePushNotifications = (): PushNotificationState => {
           finalStatus = status;
         }
         if (finalStatus !== 'granted') {
-          console.warn('Failed to get push token for push notification!');
           return;
         }
         
         const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
         
         if (!projectId) {
-          console.warn('No projectId found. Push notifications will not work without EAS project configuration.');
           return;
         }
         
         token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      } else {
-        console.log('Must use physical device for Push Notifications');
-      }
-
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-        });
       }
     } catch (error: any) {
       if (error.message?.includes('FirebaseApp is not initialized')) {
-        if (!hasWarnedFirebase) {
-          console.warn('Push Notifications: Firebase not initialized. For Android development builds, ensure google-services.json is present and configured in app.json.');
-          hasWarnedFirebase = true;
-        }
+        Alert.alert('Configuration Required', 'Firebase is not initialized. Notifications may not work in this build.');
       } else {
-        console.error('Error registering for push notifications:', error);
+        Alert.alert('Notification Error', `Failed to register for notifications: ${error.message}`);
       }
     }
 

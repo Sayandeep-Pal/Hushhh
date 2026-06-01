@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert, Image } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert, Image, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,6 @@ import { useAuth } from '../../../context/AuthContext';
 import axios from 'axios';
 import * as Linking from 'expo-linking';
 import QRCode from 'react-native-qrcode-svg';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
@@ -24,33 +23,10 @@ export default function ChatListScreen() {
   const [recentChats, setRecentChats] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
-  const [permission, requestPermission] = useCameraPermissions();
   const [shareSecretCode, setShareSecretCode] = useState('');
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-
-  // Handle Deep Links
-  useEffect(() => {
-    const handleDeepLink = async (event: { url: string }) => {
-      const { path, queryParams } = Linking.parse(event.url);
-      console.log('Deep link received:', path, queryParams);
-      
-      if (path === 'connect' && queryParams?.id) {
-        connectToUser(queryParams.id as string, queryParams.name as string, queryParams.code as string);
-      }
-    };
-
-    const sub = Linking.addEventListener('url', handleDeepLink);
-    
-    // Check if app was opened via link
-    Linking.getInitialURL().then(url => {
-      if (url) handleDeepLink({ url });
-    });
-
-    return () => sub.remove();
-  }, []);
 
   const fetchData = async () => {
     if (!token) return;
@@ -58,9 +34,6 @@ export default function ChatListScreen() {
       const recentRes = await axios.get(`${API_URL}/api/users/recent`);
       setRecentChats(recentRes.data);
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     }
   };
 
@@ -128,9 +101,6 @@ export default function ChatListScreen() {
         } 
       });
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
       handleError(error, 'Connection Failed');
     }
   };
@@ -147,34 +117,6 @@ export default function ChatListScreen() {
     }
   }, [search]);
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
-    setShowScanner(false);
-    try {
-      const { path, queryParams } = Linking.parse(data);
-      if (path === 'connect' && queryParams?.id) {
-        connectToUser(queryParams.id as string, queryParams.name as string, queryParams.code as string);
-      } else {
-        Alert.alert('Invalid QR', 'This code is not a valid Hush identity.');
-      }
-    } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
-      Alert.alert('Scan Error', 'Could not parse the agent identity.');
-    }
-  };
-
-  const startScanning = async () => {
-    if (!permission?.granted) {
-      const { granted } = await requestPermission();
-      if (!granted) {
-        Alert.alert('Permission Required', 'Hush needs camera access to scan agent QR codes.');
-        return;
-      }
-    }
-    setShowScanner(true);
-  };
-
   const performSearch = async () => {
     if (!search || search.length <= 2) return;
     setIsLoading(true);
@@ -184,32 +126,31 @@ export default function ChatListScreen() {
       const filtered = response.data.filter((u: any) => u.id !== user?.id);
       setSearchResults(filtered);
     } catch (error: any) {
-      console.log("ERROR", error);
-      console.log("RESPONSE", error?.response?.data);
-      console.log("MESSAGE", error?.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const shareMyIdentity = async () => {
+    if (!shareSecretCode) {
+      Alert.alert('Security Required', 'Please set a Secret Code to encrypt your identity before sharing.');
+      return;
+    }
+
     const finalUrl = Linking.createURL('connect', {
       queryParams: { 
         id: user?.id, 
         name: profile?.username,
-        code: shareSecretCode || undefined
+        code: shareSecretCode
       },
     });
     
     try {
       await Share.share({
-        message: shareSecretCode 
-          ? `Connect with me on Hush! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`
-          : `Connect with me on Hush! My codename is ${profile?.username}. Scan my QR or click: ${finalUrl}`,
+        message: `Connect with me on Hush! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`,
         url: finalUrl,
       });
     } catch (e) {
-      console.error('Sharing failed', e);
     }
   };
 
@@ -296,9 +237,6 @@ export default function ChatListScreen() {
           <Text style={styles.headerTitle}>Chats</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={startScanning} style={styles.actionButton}>
-            <Ionicons name="scan-outline" size={24} color={theme.accent} />
-          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowIdentityModal(true)} style={styles.actionButton}>
             <Ionicons name="qr-code-outline" size={24} color={theme.accent} />
           </TouchableOpacity>
@@ -354,94 +292,81 @@ export default function ChatListScreen() {
         ListFooterComponent={isLoading ? <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} /> : null}
       />
 
-      {/* QR Scanner Modal */}
-      <Modal visible={showScanner} animationType="slide">
-        <SafeAreaView style={styles.scannerContainer}>
-          <View style={styles.scannerHeader}>
-            <TouchableOpacity onPress={() => setShowScanner(false)} style={styles.closeScanner}>
-              <Ionicons name="close" size={32} color="#FFF" />
-            </TouchableOpacity>
-            <Text style={styles.scannerTitle}>Scan Agent QR</Text>
-            <View style={{ width: 40 }} />
-          </View>
-          
-          <CameraView
-            style={styles.camera}
-            onBarcodeScanned={showScanner ? handleBarCodeScanned : undefined}
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr'],
-            }}
-          >
-            <View style={styles.overlay}>
-              <View style={styles.unfocusedContainer}></View>
-              <View style={styles.middleContainer}>
-                <View style={styles.unfocusedContainer}></View>
-                <View style={styles.focusedContainer}>
-                  <View style={[styles.corner, styles.topLeft]} />
-                  <View style={[styles.corner, styles.topRight]} />
-                  <View style={[styles.corner, styles.bottomLeft]} />
-                  <View style={[styles.corner, styles.bottomRight]} />
-                </View>
-                <View style={styles.unfocusedContainer}></View>
-              </View>
-              <View style={styles.unfocusedContainer}>
-                <Text style={styles.scannerHint}>Align the agent's QR code within the frame</Text>
-              </View>
-            </View>
-          </CameraView>
-        </SafeAreaView>
-      </Modal>
-
       {/* Identity Modal */}
       <Modal visible={showIdentityModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity 
-              style={styles.closeModal} 
-              onPress={() => setShowIdentityModal(false)}
-            >
-              <Ionicons name="close" size={28} color={theme.accent} />
-            </TouchableOpacity>
-            
-            <Text style={styles.modalTitle}>Your Secret Identity</Text>
-            <Text style={styles.modalSubtitle}>Share this QR or link with trusted allies only.</Text>
-            
-            <View style={styles.modalAvatarWrapper}>
-              <Avatar name={profile?.username || 'Anonymous'} seed={profile?.avatarSeed} size={80} />
-            </View>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalKeyboardAvoiding}
+          >
+            <View style={styles.modalContent}>
+              <TouchableOpacity 
+                style={styles.closeModal} 
+                onPress={() => setShowIdentityModal(false)}
+              >
+                <Ionicons name="close" size={28} color={theme.accent} />
+              </TouchableOpacity>
+              
+              <ScrollView 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalScrollContent}
+              >
+                <Text style={styles.modalTitle}>Your Secret Identity</Text>
+                <Text style={styles.modalSubtitle}>Share this QR or link with trusted allies only.</Text>
+                
+                <View style={styles.modalAvatarWrapper}>
+                  <Avatar name={profile?.username || 'Anonymous'} seed={profile?.avatarSeed} size={80} />
+                </View>
 
-            <View style={styles.shareCodeInputContainer}>
-              <Text style={styles.shareCodeLabel}>Bundle a Secret Code (Optional)</Text>
-              <TextInput
-                style={styles.shareCodeInput}
-                placeholder="e.g. MySecret123"
-                placeholderTextColor={theme.textTertiary}
-                value={shareSecretCode}
-                onChangeText={setShareSecretCode}
-                autoCapitalize="none"
-              />
-              <Text style={styles.shareCodeHint}>If set, your ally will automatically use this code to unlock your chat.</Text>
-            </View>
+                <View style={styles.shareCodeInputContainer}>
+                  <Text style={styles.shareCodeLabel}>Step 1: Set a Secret Code</Text>
+                  <TextInput
+                    style={styles.shareCodeInput}
+                    placeholder="e.g. MySecret123"
+                    placeholderTextColor={theme.textTertiary}
+                    value={shareSecretCode}
+                    onChangeText={setShareSecretCode}
+                    autoCapitalize="none"
+                  />
+                  <Text style={styles.shareCodeHint}>This code is required to generate your secure QR identity.</Text>
+                </View>
 
-            <View style={styles.qrContainer}>
-              <QRCode
-                value={connectUrl}
-                size={200}
-                color={theme.qrForeground}
-                backgroundColor={theme.qrBackground}
-              />
+                {shareSecretCode ? (
+                  <View style={styles.qrContainer}>
+                    <QRCode
+                      value={connectUrl}
+                      size={200}
+                      color={theme.qrForeground}
+                      backgroundColor={theme.qrBackground}
+                    />
+                  </View>
+                ) : (
+                  <View style={[styles.qrContainer, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
+                    <Ionicons name="lock-closed" size={60} color={theme.textTertiary} />
+                    <Text style={{ color: theme.textTertiary, marginTop: 10, fontWeight: '700', textAlign: 'center' }}>
+                      Enter a code above{"\n"}to unlock your QR
+                    </Text>
+                  </View>
+                )}
+                
+                <Text style={styles.codenameText}>
+                  {profileBase}
+                  {profileDisc && <Text style={styles.modalDiscriminator}>#{profileDisc}</Text>}
+                </Text>
+                
+                <TouchableOpacity 
+                  style={[styles.shareButton, !shareSecretCode && { opacity: 0.5 }]} 
+                  onPress={shareMyIdentity}
+                  disabled={!shareSecretCode}
+                >
+                  <Ionicons name="share-social-outline" size={20} color="#FFF" />
+                  <Text style={styles.shareButtonText}>
+                    {shareSecretCode ? 'Share Connection Link' : 'Locked'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-            
-            <Text style={styles.codenameText}>
-              {profileBase}
-              {profileDisc && <Text style={styles.modalDiscriminator}>#{profileDisc}</Text>}
-            </Text>
-            
-            <TouchableOpacity style={styles.shareButton} onPress={shareMyIdentity}>
-              <Ionicons name="share-social-outline" size={20} color="#FFF" />
-              <Text style={styles.shareButtonText}>Share Connection Link</Text>
-            </TouchableOpacity>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -502,94 +427,6 @@ const createStyles = (theme: any) => StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
-  },
-  scannerContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  scannerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#000',
-  },
-  scannerTitle: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  closeScanner: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  camera: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  unfocusedContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  middleContainer: {
-    flexDirection: 'row',
-    height: 250,
-  },
-  focusedContainer: {
-    width: 250,
-    height: 250,
-    position: 'relative',
-  },
-  scannerHint: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  corner: {
-    position: 'absolute',
-    width: 30,
-    height: 30,
-    borderColor: '#FF6B6B',
-    borderWidth: 4,
-  },
-  topLeft: {
-    top: 0,
-    left: 0,
-    borderRightWidth: 0,
-    borderBottomWidth: 0,
-    borderTopLeftRadius: 15,
-  },
-  topRight: {
-    top: 0,
-    right: 0,
-    borderLeftWidth: 0,
-    borderBottomWidth: 0,
-    borderTopRightRadius: 15,
-  },
-  bottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderRightWidth: 0,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 15,
-  },
-  bottomRight: {
-    bottom: 0,
-    right: 0,
-    borderLeftWidth: 0,
-    borderTopWidth: 0,
-    borderBottomRightRadius: 15,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -738,24 +575,38 @@ const createStyles = (theme: any) => StyleSheet.create({
     backgroundColor: theme.modalOverlay,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
+  },
+  modalKeyboardAvoiding: {
+    width: '100%',
+    maxHeight: '90%',
   },
   modalContent: {
     width: '100%',
     backgroundColor: theme.surface,
     borderRadius: 35,
-    padding: 30,
+    padding: 20,
+    paddingTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalScrollContent: {
     alignItems: 'center',
+    paddingBottom: 20,
   },
   closeModal: {
     alignSelf: 'flex-end',
-    marginBottom: 10,
+    padding: 10,
   },
   modalTitle: {
     fontSize: 28,
     fontWeight: '900',
     color: theme.text,
     marginBottom: 8,
+    textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 14,
@@ -763,6 +614,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     fontWeight: '500',
+    paddingHorizontal: 10,
   },
   modalAvatarWrapper: {
     marginBottom: 20,
@@ -808,6 +660,10 @@ const createStyles = (theme: any) => StyleSheet.create({
     shadowRadius: 20,
     elevation: 5,
     marginBottom: 20,
+    width: 240,
+    height: 240,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   codenameText: {
     fontSize: 22,
@@ -815,6 +671,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: theme.text,
     marginBottom: 30,
     letterSpacing: 2,
+    textAlign: 'center',
   },
   modalDiscriminator: {
     fontSize: 14,

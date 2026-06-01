@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import * as Notifications from 'expo-notifications';
 import { Vibration } from 'react-native';
 
-interface SocketContextType {
+export interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
   activeRoomId: string | null;
@@ -15,6 +15,11 @@ const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 const SOCKET_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
+// Global reference for notification handler
+export const notificationState = {
+  activeRoomId: null as string | null,
+};
+
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, user } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -24,6 +29,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     activeRoomRef.current = activeRoomId;
+    notificationState.activeRoomId = activeRoomId;
   }, [activeRoomId]);
 
   useEffect(() => {
@@ -35,7 +41,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       newSocket.on('connect', () => setIsConnected(true));
       newSocket.on('disconnect', () => setIsConnected(false));
 
-      // Global message listener for local notifications and vibration
+      // Global message listener for vibration
       newSocket.on('receive_message', async (data) => {
         // Skip if message is from self
         if (data.senderId === user?.id) return;
@@ -43,20 +49,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Only vibrate if we ARE in that specific room
         if (data.roomId === activeRoomRef.current) {
           Vibration.vibrate();
-        }
-
-        // Only show local notification if we are NOT in that room
-        if (data.roomId !== activeRoomRef.current) {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'New Secure Message 🔒',
-              body: `${data.senderUsername || 'Someone'} sent you a message`,
-              data: { roomId: data.roomId, senderUsername: data.senderUsername },
-              sound: true,
-              priority: Notifications.AndroidNotificationPriority.MAX,
-            },
-            trigger: null, // trigger immediately
-          });
         }
       });
 

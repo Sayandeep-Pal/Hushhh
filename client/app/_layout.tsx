@@ -9,15 +9,24 @@ import { useEffect, useState, useRef } from "react";
 import * as Notifications from 'expo-notifications';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from "@expo/vector-icons";
+import { notificationState } from "../context/SocketContext";
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    const roomId = notification.request.content.data?.roomId;
+    const isAppActive = AppState.currentState === 'active';
+    
+    // Suppress notification if we are already in the chat room and app is active
+    const shouldShow = !isAppActive || roomId !== notificationState.activeRoomId;
+
+    return {
+      shouldShowAlert: shouldShow,
+      shouldPlaySound: shouldShow,
+      shouldSetBadge: false,
+      shouldShowBanner: shouldShow,
+      shouldShowList: shouldShow,
+    };
+  },
 });
 
 function LockScreen() {

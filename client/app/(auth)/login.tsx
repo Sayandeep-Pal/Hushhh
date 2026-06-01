@@ -24,7 +24,6 @@ export default function OnboardingScreen() {
       await signInAnonymously(username);
       router.replace('/(main)');
     } catch (e: any) {
-      console.error('Onboarding Error:', e);
       Alert.alert('Identity Error', e.message || 'Could not create your secret identity.');
     } finally {
       setLoading(false);
