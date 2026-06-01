@@ -52,17 +52,7 @@ app-example
 *.jar
 
 # Important Logic & Secrets
-client/utils/security.ts
-client/context/SecurityContext.tsx
-client/app/(main)/chat/[id].tsx
-client/app/(main)/auto-unlock-settings.tsx
-client/app/(main)/vault.tsx
-client/app/(auth)/login.tsx
-client/context/AuthContext.tsx
-client/google-services.json
-client/app.json
-client/eas.json
 server/.env
 client/.env
 .env
-GEMINI.md
+
