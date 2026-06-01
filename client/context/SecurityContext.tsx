@@ -2,6 +2,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 
+interface AutoUnlockConfig {
+  enabled: boolean;
+  duration: number; // in minutes, -1 for always
+  lastUnlockedAt?: number;
+}
+
 interface SecurityContextType {
   isBiometricEnabled: boolean;
   isPasscodeEnabled: boolean;
@@ -15,6 +21,12 @@ interface SecurityContextType {
   saveSecretCode: (roomId: string, code: string, contactName: string) => Promise<void>;
   getSecretCode: (roomId: string) => Promise<string | null>;
   vault: Record<string, { code: string, name: string, updatedAt: number }>;
+  // Auto-Unlock Logic
+  autoUnlockGlobal: boolean;
+  autoUnlockConfig: Record<string, AutoUnlockConfig>;
+  toggleAutoUnlockGlobal: (enabled: boolean) => Promise<void>;
+  updateContactAutoUnlock: (roomId: string, enabled: boolean, duration: number) => Promise<void>;
+  recordAutoUnlock: (roomId: string) => Promise<void>;
 }
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
@@ -23,6 +35,8 @@ const BIOMETRIC_KEY = 'security_biometric_enabled';
 const PASSCODE_ENABLED_KEY = 'security_passcode_enabled';
 const PASSCODE_VALUE_KEY = 'security_app_passcode';
 const VAULT_KEY = 'security_secret_vault';
+const AUTO_UNLOCK_GLOBAL_KEY = 'security_auto_unlock_global';
+const AUTO_UNLOCK_CONFIG_KEY = 'security_auto_unlock_config';
 
 export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
@@ -31,6 +45,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isAppLocked, setIsAppLocked] = useState(true);
   const [hasHardware, setHasHardware] = useState(false);
   const [vault, setVault] = useState<Record<string, { code: string, name: string, updatedAt: number }>>({});
+  
+  const [autoUnlockGlobal, setAutoUnlockGlobal] = useState(false);
+  const [autoUnlockConfig, setAutoUnlockConfig] = useState<Record<string, AutoUnlockConfig>>({});
 
   useEffect(() => {
     const initSecurity = async () => {
@@ -42,13 +59,20 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const passcodeEnabledStored = await SecureStore.getItemAsync(PASSCODE_ENABLED_KEY);
         const passcodeStored = await SecureStore.getItemAsync(PASSCODE_VALUE_KEY);
         const vaultStored = await SecureStore.getItemAsync(VAULT_KEY);
+        const autoUnlockGlobalStored = await SecureStore.getItemAsync(AUTO_UNLOCK_GLOBAL_KEY);
+        const autoUnlockConfigStored = await SecureStore.getItemAsync(AUTO_UNLOCK_CONFIG_KEY);
 
         setIsBiometricEnabled(biometricStored === 'true');
         setIsPasscodeEnabled(passcodeEnabledStored === 'true');
         setAppPasscode(passcodeStored);
+        setAutoUnlockGlobal(autoUnlockGlobalStored === 'true');
         
         if (vaultStored) {
           setVault(JSON.parse(vaultStored));
+        }
+
+        if (autoUnlockConfigStored) {
+          setAutoUnlockConfig(JSON.parse(autoUnlockConfigStored));
         }
 
         // If no security enabled, start unlocked
@@ -95,6 +119,38 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return vault[roomId]?.code || null;
   };
 
+  const toggleAutoUnlockGlobal = async (enabled: boolean) => {
+    await SecureStore.setItemAsync(AUTO_UNLOCK_GLOBAL_KEY, enabled.toString());
+    setAutoUnlockGlobal(enabled);
+  };
+
+  const updateContactAutoUnlock = async (roomId: string, enabled: boolean, duration: number) => {
+    const newConfig = {
+      ...autoUnlockConfig,
+      [roomId]: { 
+        ...autoUnlockConfig[roomId],
+        enabled, 
+        duration 
+      }
+    };
+    await SecureStore.setItemAsync(AUTO_UNLOCK_CONFIG_KEY, JSON.stringify(newConfig));
+    setAutoUnlockConfig(newConfig);
+  };
+
+  const recordAutoUnlock = async (roomId: string) => {
+    if (!autoUnlockConfig[roomId]) return;
+    
+    const newConfig = {
+      ...autoUnlockConfig,
+      [roomId]: {
+        ...autoUnlockConfig[roomId],
+        lastUnlockedAt: Date.now()
+      }
+    };
+    await SecureStore.setItemAsync(AUTO_UNLOCK_CONFIG_KEY, JSON.stringify(newConfig));
+    setAutoUnlockConfig(newConfig);
+  };
+
   return (
     <SecurityContext.Provider value={{ 
       isBiometricEnabled, 
@@ -107,7 +163,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       hasHardware,
       saveSecretCode,
       getSecretCode,
-      vault
+      vault,
+      autoUnlockGlobal,
+      autoUnlockConfig,
+      toggleAutoUnlockGlobal,
+      updateContactAutoUnlock,
+      recordAutoUnlock
     }}>
       {children}
     </SecurityContext.Provider>

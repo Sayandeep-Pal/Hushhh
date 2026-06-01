@@ -27,7 +27,13 @@ export default function ChatRoomScreen() {
   const { id, name, sharedCode } = useLocalSearchParams<{ id: string, name: string, sharedCode?: string }>();
   const { user } = useAuth();
   const { socket, isConnected, setActiveRoomId } = useSocket();
-  const { saveSecretCode, vault } = useSecurity();
+  const { 
+    saveSecretCode, 
+    vault, 
+    autoUnlockGlobal, 
+    autoUnlockConfig, 
+    recordAutoUnlock 
+  } = useSecurity();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -64,20 +70,39 @@ export default function ChatRoomScreen() {
   // Keep track if we have EVER had a key this session
   const [hasDerivedKeyOnce, setHasDerivedKeyOnce] = useState(false);
 
-  // Auto-unlock from vault if available
+  // Auto-unlock logic based on user preferences and timer
   useEffect(() => {
-    if (id && vault[id] && !encryptionKey && isLocked && !sharedCode) {
-      try {
-        const storedCode = vault[id].code;
-        const salt = 'funchat_secret_salt';
-        const key = deriveKey(storedCode, salt);
-        setEncryptionKey(key);
-        setIsLocked(false);
-        setShowCodeModal(false);
-        setHasDerivedKeyOnce(true);
-      } catch (e) {}
+    if (id && vault[id] && !encryptionKey && isLocked && !sharedCode && autoUnlockGlobal) {
+      const config = autoUnlockConfig[id];
+      if (config && config.enabled) {
+        let shouldAutoUnlock = false;
+        
+        if (config.duration === -1) {
+          // Always auto-unlock
+          shouldAutoUnlock = true;
+        } else if (config.lastUnlockedAt) {
+          // Check if timer has expired
+          const now = Date.now();
+          const expiryTime = config.lastUnlockedAt + (config.duration * 60 * 1000);
+          if (now < expiryTime) {
+            shouldAutoUnlock = true;
+          }
+        }
+
+        if (shouldAutoUnlock) {
+          try {
+            const storedCode = vault[id].code;
+            const salt = 'funchat_secret_salt';
+            const key = deriveKey(storedCode, salt);
+            setEncryptionKey(key);
+            setIsLocked(false);
+            setShowCodeModal(false);
+            setHasDerivedKeyOnce(true);
+          } catch (e) {}
+        }
+      }
     }
-  }, [id, vault, sharedCode]);
+  }, [id, vault, sharedCode, autoUnlockGlobal, autoUnlockConfig]);
 
   // Auto-apply shared code if provided
   useEffect(() => {
@@ -398,9 +423,18 @@ export default function ChatRoomScreen() {
         // Save to local vault
         if (id && name) {
           saveSecretCode(id, secretCode, name);
+          recordAutoUnlock(id);
         }
       } else {
         // This is a NEW key change request (voluntary)
+        
+        // If the key is the same, just close the modal and do nothing
+        if (key === encryptionKey) {
+          setShowCodeModal(false);
+          setSecretCode('');
+          return;
+        }
+
         setCandidateKey(key);
         setCandidateSecretCode(secretCode);
         setIsWaitingForApproval(true);
@@ -500,7 +534,7 @@ export default function ChatRoomScreen() {
           ]}
         >
           <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText, isMismatch && styles.mismatchText]}>
-            {isMismatch ? '(－‸－) Encrypted with a different key' : (item.text || item.payload)}
+            {isMismatch ? '(－‸－) Key Mismatch - Check your code' : (item.text || item.payload)}
           </Text>
           {item.text && !isMismatch ? (
             <Text style={[styles.maskIndicator, isMe ? {color: 'rgba(255,255,255,0.7)'} : {color: theme.textTertiary}]}>
@@ -702,6 +736,7 @@ export default function ChatRoomScreen() {
                 onChangeText={setSecretCode}
                 secureTextEntry={!showSecret}
                 autoFocus
+                onSubmitEditing={handleUnlock}
               />
               <TouchableOpacity 
                 style={styles.eyeButton} 
@@ -945,20 +980,23 @@ const createStyles = (theme: any) => StyleSheet.create({
     marginRight: -10,
   },
   modalEmoji: {
-    fontSize: 60,
-    marginBottom: 20,
+    fontSize: 48,
+    marginBottom: 15,
+    textAlign: 'center',
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: theme.text,
-    marginBottom: 10,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 14,
     color: theme.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
+    paddingHorizontal: 10,
   },
   modalInputWrapper: {
     width: '100%',

@@ -50,7 +50,7 @@
     - `0` ➔ `\u200B` (Zero Width Space)
     - `1` ➔ `\u200C` (Zero Width Non-Joiner)
     - `Separator` ➔ `\u200D` (Zero Width Joiner)
-- **Carrier:** The invisible payload is appended to a "carrier" unique icon (default: `(✯‿✯)-->` or `⸜(*⌒◡⌒*)->`).
+- **Carrier:** The invisible payload is appended to a "carrier" unique icon (e.g., `(✯‿✯)-->`, `⸜(*⌒◡⌒*)->`, `(〃‿〃)-->`, etc.).
 - **Persistence:** Only the carrier icon with hidden data is sent to the server and stored in MongoDB.
 
 ### Key Synchronization

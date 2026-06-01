@@ -13,7 +13,17 @@ const ZW = {
 /**
  * A set of unique icons to use as carriers for the hidden message.
  */
-const CARRIERS = ['(✯‿✯)-->', '⸜(*⌒◡⌒*)->'];
+const CARRIERS = [
+  '(✯‿✯)-->', 
+  '⸜(*⌒◡⌒*)->',
+  '(っ˘з(˘⌣˘ )->',
+  '( •⌄• )✧-->',
+  '(๑˃̵ᴗ˂̵)و-->',
+  '(〃‿〃)-->',
+  '(◕‿◕✿)-->',
+  '٩(◕‿◕｡)۶->',
+  '(*^‿^*)-->'
+];
 
 /**
  * Encodes a string into zero-width characters (handling multi-byte UTF-8).

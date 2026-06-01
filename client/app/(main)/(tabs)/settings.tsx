@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, Switch, TouchableOpacity, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, Text, View, Switch, TouchableOpacity, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Image, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,10 +15,9 @@ export default function SettingsScreen() {
     appPasscode, 
     toggleBiometrics, 
     setPasscode,
-    hasHardware,
-    vault
+    hasHardware
   } = useSecurity();
-  const { user, profile, signInAnonymously, signOut } = useAuth();
+  const { profile, signInAnonymously, signOut } = useAuth();
   
   const router = useRouter();
   const theme = useTheme();
@@ -151,8 +150,22 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Advanced</Text>
+          <Text style={styles.sectionTitle}>Preferences</Text>
           
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => router.push('/(main)/auto-unlock-settings')}
+          >
+            <View style={styles.settingInfo}>
+              <Ionicons name="flash-outline" size={24} color={theme.text} />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>Auto-Unlock Chat</Text>
+                <Text style={styles.settingDescription}>Manage automatic decryption and timers.</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.textTertiary} />
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.menuItem}
             onPress={() => router.push('/(main)/vault')}
@@ -323,6 +336,10 @@ const createStyles = (theme: any) => StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 20,
   },
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
   profileInputContainer: {
     gap: 15,
   },
@@ -456,6 +473,24 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontStyle: 'italic',
     paddingVertical: 10,
   },
+  contactRuleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  contactRuleName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.text,
+  },
+  contactRuleDuration: {
+    fontSize: 12,
+    color: theme.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -529,5 +564,45 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: theme.surface,
+    borderRadius: 25,
+    padding: 25,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.text,
+    marginBottom: 10,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  durationOption: {
+    width: '100%',
+    paddingVertical: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  durationOptionText: {
+    fontSize: 16,
+    color: theme.text,
+    fontWeight: '600',
   },
 });
