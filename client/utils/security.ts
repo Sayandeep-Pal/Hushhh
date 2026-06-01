@@ -11,9 +11,9 @@ const ZW = {
 };
 
 /**
- * A set of emojis to use as carriers for the hidden message.
+ * A set of unique icons to use as carriers for the hidden message.
  */
-const CARRIERS = ['🔒'];
+const CARRIERS = ['(✯‿✯)-->', '⸜(*⌒◡⌒*)->'];
 
 /**
  * Encodes a string into zero-width characters (handling multi-byte UTF-8).
@@ -85,7 +85,7 @@ export function getKeyFingerprint(keyHex: string): string {
 }
 
 /**
- * Encrypts a plaintext string using AES-256-CBC and hides it in a carrier emoji using Zero-Width steganography.
+ * Encrypts a plaintext string using AES-256-CBC and hides it in a carrier icon using Zero-Width steganography.
  * Attaches a key fingerprint for verification.
  */
 export function encryptMessage(plaintext: string, keyHex: string): string {
@@ -121,7 +121,7 @@ export function encryptMessage(plaintext: string, keyHex: string): string {
 }
 
 /**
- * Decrypts a carrier emoji with hidden zero-width ciphertext using AES-256-CBC.
+ * Decrypts a carrier icon with hidden zero-width ciphertext using AES-256-CBC.
  * Verifies the key fingerprint before attempting decryption.
  */
 export function decryptMessage(carrierWithHidden: string, keyHex: string): string {
@@ -131,7 +131,7 @@ export function decryptMessage(carrierWithHidden: string, keyHex: string): strin
     
     // Extract zero-width data
     const match = carrierWithHidden.match(/[\u200B-\u200D]+/);
-    if (!match) return '🔒 [No hidden data]';
+    if (!match) return '(－‸－) [No hidden data]';
     
     const payload = decodeFromZeroWidth(match[0]);
     const parts = payload.split(':');
@@ -145,7 +145,7 @@ export function decryptMessage(carrierWithHidden: string, keyHex: string): strin
       fingerprint = null; // Legacy message
     }
     
-    if (!ivHex || !ciphertextHex) return '🔒 [Invalid payload]';
+    if (!ivHex || !ciphertextHex) return '(－‸－) [Invalid payload]';
 
     // Verify fingerprint if present
     if (fingerprint && fingerprint !== currentFingerprint) {
@@ -166,6 +166,6 @@ export function decryptMessage(carrierWithHidden: string, keyHex: string): strin
     if (!decryptedText) throw new Error('Decryption resulted in empty string');
     return decryptedText;
   } catch (e) {
-    return '🔒 [Decryption Error]';
+    return '(－‸－) [Decryption Error]';
   }
 }

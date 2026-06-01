@@ -15,7 +15,7 @@ import { Avatar } from '../../../components/Avatar';
 interface Message {
   id: string;
   senderId: string;
-  payload: string; // Emoji string
+  payload: string; // Icon string with hidden data
   text?: string;   // Decrypted text (local only)
   isOldKey?: boolean;
   timestamp: string;
@@ -164,7 +164,7 @@ export default function ChatRoomScreen() {
         if ((!decryptedText || decryptedText === 'FINGERPRINT_MISMATCH') && previousKey) {
           try {
             const oldDecrypted = decryptMessage(msg.payload, previousKey);
-            if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('🔒')) {
+            if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('(－‸－)')) {
               decryptedText = oldDecrypted;
               isOldKey = true;
             }
@@ -324,7 +324,7 @@ export default function ChatRoomScreen() {
       if ((!decryptedText || decryptedText === 'FINGERPRINT_MISMATCH') && previousKey) {
         try {
           const oldDecrypted = decryptMessage(data.payload, previousKey);
-          if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('🔒')) {
+          if (oldDecrypted && oldDecrypted !== 'FINGERPRINT_MISMATCH' && !oldDecrypted.startsWith('(－‸－)')) {
             decryptedText = oldDecrypted;
             isOldKey = true;
           }
@@ -448,11 +448,11 @@ export default function ChatRoomScreen() {
     }
 
     try {
-      const emojiPayload = encryptMessage(inputText, encryptionKey);
+      const securePayload = encryptMessage(inputText, encryptionKey);
       const messageData = {
         roomId: id,
         senderId: user?.id,
-        payload: emojiPayload
+        payload: securePayload
       };
 
       socket.emit('send_message', messageData);
@@ -460,7 +460,7 @@ export default function ChatRoomScreen() {
       const newMessage: Message = {
         id: Date.now().toString(),
         senderId: user?.id!,
-        payload: emojiPayload,
+        payload: securePayload,
         text: inputText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
@@ -500,7 +500,7 @@ export default function ChatRoomScreen() {
           ]}
         >
           <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText, isMismatch && styles.mismatchText]}>
-            {isMismatch ? '🔒 Encrypted with a different key' : (item.text || item.payload)}
+            {isMismatch ? '(－‸－) Encrypted with a different key' : (item.text || item.payload)}
           </Text>
           {item.text && !isMismatch ? (
             <Text style={[styles.maskIndicator, isMe ? {color: 'rgba(255,255,255,0.7)'} : {color: theme.textTertiary}]}>
@@ -508,7 +508,7 @@ export default function ChatRoomScreen() {
             </Text>
           ) : (
             <Text style={[styles.maskIndicator, {color: theme.textTertiary}]}>
-              {isMismatch ? '⚠️ Mismatch' : '🔒 Encrypted Emojis'}
+              {isMismatch ? '⚠️ Mismatch' : '(✯‿✯) Secure Message'}
             </Text>
           )}
         </Pressable>
@@ -688,7 +688,7 @@ export default function ChatRoomScreen() {
               <Ionicons name="close" size={28} color={theme.accent} />
             </TouchableOpacity>
 
-            <Text style={styles.modalEmoji}>🔒</Text>
+            <Text style={styles.modalEmoji}>(✯‿✯)</Text>
             <Text style={styles.modalTitle}>Enter Secret Code</Text>
             <Text style={styles.modalSubtitle}>
               Both you and {name?.split('#')[0]} must use the same code to unlock this chat.

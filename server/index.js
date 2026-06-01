@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema({
 const messageSchema = new mongoose.Schema({
   roomId: { type: String, required: true, index: true },
   senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'funchatUser', required: true },
-  payload: { type: String, required: true }, // Emoji string
+  payload: { type: String, required: true }, // Icon string with hidden data
   isRead: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
@@ -337,7 +337,7 @@ const sendPushNotification = async (userId, senderUsername, roomId) => {
     const messages = [{
       to: user.pushToken,
       sound: 'default',
-      title: 'New Secure Message 🔒',
+      title: 'New Secure Message (✯‿✯)',
       body: `${senderUsername} sent you a message`,
       data: { senderUsername, roomId },
       priority: 'high',

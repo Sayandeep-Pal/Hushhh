@@ -35,7 +35,7 @@
     └── .env                # MONGO_URI, JWT_SECRET
 ```
 
-## 🔒 Security Deep Dive
+## (✯‿✯) Security Deep Dive
 
 ### E2EE Workflow
 1. **Handshake:** User enters a "Secret Code" in the Chat Room.
@@ -50,8 +50,8 @@
     - `0` ➔ `\u200B` (Zero Width Space)
     - `1` ➔ `\u200C` (Zero Width Non-Joiner)
     - `Separator` ➔ `\u200D` (Zero Width Joiner)
-- **Carrier:** The invisible payload is appended to a "carrier" emoji (default: `🔒`).
-- **Persistence:** Only the carrier emoji with hidden data is sent to the server and stored in MongoDB.
+- **Carrier:** The invisible payload is appended to a "carrier" unique icon (default: `(✯‿✯)-->` or `⸜(*⌒◡⌒*)->`).
+- **Persistence:** Only the carrier icon with hidden data is sent to the server and stored in MongoDB.
 
 ### Key Synchronization
 - When a user changes their Secret Code, the client emits a `KEY_CHANGE` event via Socket.io.
@@ -80,10 +80,10 @@
 ## 🛠 Technical Decisions
 - **MongoDB:** Selected for schema-less storage of message payloads, allowing future expansion to media sharing.
 - **Express 5:** Uses the latest Express features for better error handling in async routes.
-- **Stealth Mode:** Message "masking" as emojis ensures that even if a shoulder-surfer sees the screen, they only see emojis unless the chat is "unlocked".
+- **Stealth Mode:** Message "masking" as unique icons ensures that even if a shoulder-surfer sees the screen, they only see these icons unless the chat is "unlocked".
 
 ## 🛣 Future Roadmap
 - [x] **Push Notifications:** Notify users of new encrypted payloads.
-- [ ] **Media E2EE:** Encrypting and hiding images/audio within multiple emoji "packets".
+- [ ] **Media E2EE:** Encrypting and hiding images/audio within multiple "icon packets".
 - [ ] **Room Discovery:** Local discovery using Bluetooth/mDNS for truly anonymous nearby chatting.
 - [ ] **Code Recovery:** Optional hint system for Secret Codes stored locally in `SecureStore`.

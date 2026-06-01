@@ -24,7 +24,7 @@ export default function HowToUseScreen() {
     {
       icon: 'eye-off-outline',
       title: 'Stealth Mode',
-      description: 'Messages are hidden inside carrier emojis using invisible steganography. Even if someone sees your screen, they only see emojis unless the chat is unlocked.'
+      description: 'Messages are hidden inside unique carrier icons using invisible steganography. Even if someone sees your screen, they only see these icons unless the chat is unlocked.'
     },
     {
       icon: 'key-outline',
