@@ -132,7 +132,8 @@ export default function ChatListScreen() {
   };
 
   const shareMyIdentity = async () => {
-    if (!shareSecretCode) {
+    const trimmedCode = shareSecretCode.trim();
+    if (!trimmedCode) {
       Alert.alert('Security Required', 'Please set a Secret Code to encrypt your identity before sharing.');
       return;
     }
@@ -141,13 +142,13 @@ export default function ChatListScreen() {
       queryParams: { 
         id: user?.id, 
         name: profile?.username,
-        code: shareSecretCode
+        code: trimmedCode
       },
     });
     
     try {
       await Share.share({
-        message: `Connect with me on Hush! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`,
+        message: `Connect with me on Hushhh! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`,
         url: finalUrl,
       });
     } catch (e) {

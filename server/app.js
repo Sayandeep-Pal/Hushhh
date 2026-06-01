@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.send('Fun Chat MongoDB Server is running');
+  res.send('Hushhh MongoDB Server is running');
 });
 
 // Routes

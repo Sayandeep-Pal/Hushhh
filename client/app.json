@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Hush",
+    "name": "Hushhh",
     "slug": "client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "funchat",
+    "scheme": "hushhh",
     "userInterfaceStyle": "automatic",
     "jsEngine": "hermes",
     "newArchEnabled": true,
@@ -24,7 +24,7 @@
         {
           "action": "VIEW",
           "data": {
-            "scheme": "funchat"
+            "scheme": "hushhh"
           },
           "category": [
             "BROWSABLE",

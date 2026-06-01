@@ -65,3 +65,4 @@ client/eas.json
 server/.env
 client/.env
 .env
+GEMINI.md

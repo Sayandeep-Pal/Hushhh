@@ -8,6 +8,7 @@ import { useSocket } from '../../../context/SocketContext';
 import { useSecurity } from '../../../context/SecurityContext';
 import { encryptMessage, decryptMessage, deriveKey } from '../../../utils/security';
 import * as SecureStore from 'expo-secure-store';
+import * as Clipboard from 'expo-clipboard';
 import axios from 'axios';
 import { useTheme } from '../../../hooks/useTheme';
 import { Avatar } from '../../../components/Avatar';
@@ -48,7 +49,7 @@ export default function ChatRoomScreen() {
   const [candidateKey, setCandidateKey] = useState<string | null>(null);
   const [candidateSecretCode, setCandidateSecretCode] = useState<string | null>(null);
   const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
-  const [showCodeModal, setShowCodeModal] = useState(!sharedCode);
+  const [showCodeModal, setShowCodeModal] = useState(false);
   const [showKeyRequest, setShowKeyRequest] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [pendingKeyRequest, setPendingKeyRequest] = useState<any>(null);
@@ -63,7 +64,7 @@ export default function ChatRoomScreen() {
   const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [isMeTyping, setIsMeTyping] = useState(false);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<any>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -91,8 +92,8 @@ export default function ChatRoomScreen() {
 
         if (shouldAutoUnlock) {
           try {
-            const storedCode = vault[id].code;
-            const salt = 'funchat_secret_salt';
+            const storedCode = vault[id].code.trim();
+            const salt = 'hushhh_secret_salt';
             const key = deriveKey(storedCode, salt);
             setEncryptionKey(key);
             setIsLocked(false);
@@ -108,8 +109,9 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     if (sharedCode && !encryptionKey && isLocked) {
       try {
-        const salt = 'funchat_secret_salt';
-        const key = deriveKey(sharedCode, salt);
+        const trimmedSharedCode = sharedCode.trim();
+        const salt = 'hushhh_secret_salt';
+        const key = deriveKey(trimmedSharedCode, salt);
         setEncryptionKey(key);
         setIsLocked(false);
         setShowCodeModal(false);
@@ -312,6 +314,7 @@ export default function ChatRoomScreen() {
   }, [socket, encryptionKey, previousKey, candidateKey, isWaitingForApproval, id, otherUserId]);
 
   const handleCopyMessage = async () => {
+    if (isLocked) return;
     if (selectedMessage?.text) {
       await Clipboard.setStringAsync(selectedMessage.text);
       setShowActionMenu(false);
@@ -320,6 +323,7 @@ export default function ChatRoomScreen() {
   };
 
   const handleDeleteForMe = () => {
+    if (isLocked) return;
     if (selectedMessage) {
       setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       setShowActionMenu(false);
@@ -328,6 +332,7 @@ export default function ChatRoomScreen() {
   };
 
   const handleDeleteForEveryone = () => {
+    if (isLocked) return;
     if (selectedMessage && socket) {
       socket.emit('delete_message', { 
         messageId: selectedMessage.id, 
@@ -437,11 +442,12 @@ export default function ChatRoomScreen() {
   };
 
   const handleUnlock = () => {
-    if (!secretCode) return;
+    const trimmedCode = secretCode.trim();
+    if (!trimmedCode) return;
     
     try {
-      const salt = 'funchat_secret_salt'; 
-      const key = deriveKey(secretCode, salt);
+      const salt = 'hushhh_secret_salt'; 
+      const key = deriveKey(trimmedCode, salt);
       
       if (!hasDerivedKeyOnce || isRespondingToHandshake) {
         // Initial unlock OR responding to an accepted handshake
@@ -453,7 +459,7 @@ export default function ChatRoomScreen() {
 
         // Save to local vault
         if (id && name) {
-          saveSecretCode(id, secretCode, name);
+          saveSecretCode(id, trimmedCode, name);
           recordAutoUnlock(id);
         }
       } else {
@@ -467,7 +473,7 @@ export default function ChatRoomScreen() {
         }
 
         setCandidateKey(key);
-        setCandidateSecretCode(secretCode);
+        setCandidateSecretCode(trimmedCode);
         setIsWaitingForApproval(true);
         setShowCodeModal(false);
         
@@ -554,6 +560,7 @@ export default function ChatRoomScreen() {
       <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.theirMessageWrapper]}>
         <Pressable 
           onLongPress={() => {
+            if (isLocked) return;
             setSelectedMessage(item);
             setShowActionMenu(true);
           }}
@@ -595,7 +602,7 @@ export default function ChatRoomScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace('/(main)');
+              router.replace('/');
             }
           }}>
             <Ionicons name="chevron-back" size={28} color={theme.accent} />
@@ -676,7 +683,7 @@ export default function ChatRoomScreen() {
         )}
 
         {/* InputArea */}
-        {!isLocked && (
+        {!isLocked ? (
           <View style={styles.inputArea}>
             <TextInput
               style={styles.input}
@@ -690,6 +697,18 @@ export default function ChatRoomScreen() {
               <Ionicons name="send" size={24} color="#FFF" />
             </TouchableOpacity>
           </View>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.inputArea, { justifyContent: 'center', backgroundColor: theme.surface }]} 
+            onPress={() => setShowCodeModal(true)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="lock-closed" size={20} color={theme.primary} />
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 16 }}>
+                Unlock Chat to Read & Reply
+              </Text>
+            </View>
+          </TouchableOpacity>
         )}
       </KeyboardAvoidingView>
 
