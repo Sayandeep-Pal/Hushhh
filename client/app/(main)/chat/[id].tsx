@@ -269,6 +269,11 @@ export default function ChatRoomScreen() {
             setCandidateKey(null);
             setIsWaitingForApproval(false);
             Alert.alert('Key Change Rejected', `${data.senderName} declined the key update. Continuing with previous key.`);
+          } else if (data.senderId !== user?.id && previousKey && !isWaitingForApproval) {
+            // Revert to previous key if the other user cancelled after accepting
+            setEncryptionKey(previousKey);
+            setPreviousKey(null);
+            Alert.alert('Key Change Cancelled', `${data.senderName} cancelled the key update. Reverting to previous key.`);
           }
           
           const systemMsg: Message = {
@@ -402,6 +407,32 @@ export default function ChatRoomScreen() {
         payload: '🚫'
       });
     } catch (error: any) {
+    }
+  };
+
+  const handleCloseCodeModal = () => {
+    setShowCodeModal(false);
+    setSecretCode('');
+    
+    if (isRespondingToHandshake) {
+      // User accepted the request but closed the modal before entering the new code.
+      // Treat this as a rejection.
+      setIsRespondingToHandshake(false);
+      
+      // Revert to previous key if we have one
+      if (previousKey) {
+        setEncryptionKey(previousKey);
+        setPreviousKey(null);
+      }
+      
+      // Tell the other user we cancelled/rejected
+      socket?.emit('send_message', {
+        roomId: id,
+        senderId: user?.id,
+        senderName: user?.username,
+        type: 'KEY_CHANGE_REJECTED',
+        payload: '🚫'
+      });
     }
   };
 
@@ -709,7 +740,7 @@ export default function ChatRoomScreen() {
       </Modal>
 
       {/* Secret Code Modal */}
-      <Modal visible={showCodeModal} transparent animationType="slide">
+      <Modal visible={showCodeModal} transparent animationType="slide" onRequestClose={handleCloseCodeModal}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
@@ -717,7 +748,7 @@ export default function ChatRoomScreen() {
           <View style={styles.modalContent}>
             <TouchableOpacity 
               style={styles.closeModal} 
-              onPress={() => setShowCodeModal(false)}
+              onPress={handleCloseCodeModal}
             >
               <Ionicons name="close" size={28} color={theme.accent} />
             </TouchableOpacity>
