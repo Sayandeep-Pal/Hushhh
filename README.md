@@ -8,11 +8,11 @@
 
 | Splash & Identity | Chat List | Secure Chat Room |
 | :---: | :---: | :---: |
-| ![Splash](https://via.placeholder.com/300x600?text=Identity+Creation) | ![Chat List](https://via.placeholder.com/300x600?text=Chat+List) | ![Chat Room](https://via.placeholder.com/300x600?text=Secure+Chat+Room) |
+| ![Splash](./screenshots/splash&identity.jpg) | ![Chat List](./screenshots/chat%20list.jpg) | ![Chat Room](./screenshots/secure%20chat%20room.jpg) |
 
 | Handshake Request | Stealth Mode | Settings & Vault |
 | :---: | :---: | :---: |
-| ![Handshake](https://via.placeholder.com/300x600?text=Handshake+Request) | ![Stealth](https://via.placeholder.com/300x600?text=Stealth+Payload) | ![Settings](https://via.placeholder.com/300x600?text=Security+Vault) |
+| ![Handshake](./screenshots/handshake%20req.jpg) | ![Stealth](./screenshots/stealth%20mode.jpg) | ![Settings](./screenshots/settings%20and%20vault.jpg) |
 
 ---
 
@@ -20,6 +20,8 @@
 
 - **🔐 True E2EE:** Messages are encrypted/decrypted only on your device. The server never sees your "Secret Code".
 - **👻 Stealth Steganography:** Encrypted data is converted to zero-width Unicode characters and hidden behind "carrier" emojis (e.g., `(✯‿✯)`).
+- **🗄️ Secret Vault:** Securely store and manage your chat keys locally, protected by biometric or passcode authentication.
+- **⚡ Auto-Unlock:** Stay in the flow with configurable auto-unlock timers (5m, 30m, 1h, etc.) for trusted contacts.
 - **🎭 Anonymous Identities:** No phone numbers or emails. Create a codename and jump into a chat.
 - **🤝 Dynamic Handshake:** Change Secret Codes mid-conversation with a real-time acceptance/rejection flow.
 - **📱 Deep Linking & QR:** Share your identity via custom `hushhh://` links or QR codes.
@@ -53,7 +55,7 @@ The result is appended to a visible carrier icon. On the screen, you see `(✯�
 - **Framework:** React Native (Expo SDK 54)
 - **Routing:** Expo Router (File-based)
 - **Animation:** Reanimated & Lucide Icons
-- **Security:** `crypto-js`, `expo-crypto`, `expo-secure-store`
+- **Security:** `crypto-js`, `expo-crypto`, `expo-secure-store`, `expo-local-authentication`
 - **Networking:** Axios & Socket.io-client
 
 ### Backend (Server)
@@ -117,7 +119,7 @@ The result is appended to a visible carrier icon. On the screen, you see `(✯�
 ```text
 /
 ├── client/                 # React Native / Expo Mobile App
-│   ├── app/                # Expo Router Screen Files
+│   ├── app/                # Expo Router Screen Files (Vault, Auto-Unlock, etc.)
 │   ├── context/            # Auth, Socket, & Security Contexts
 │   ├── utils/              # Crypto & Steganography Logic
 │   └── components/         # Reusable UI (Avatars, etc.)
@@ -135,7 +137,7 @@ The result is appended to a visible carrier icon. On the screen, you see `(✯�
 ## 🛣 Future Roadmap
 - [ ] **Media E2EE:** Hide images and audio within multiple icon "packets".
 - [ ] **Local Discovery:** Use Bluetooth/mDNS for truly anonymous nearby chatting.
-- [ ] **Code Recovery:** Optional hint system for Secret Codes stored locally in SecureStore.
+- [x] **Code Recovery:** Persistent Secret Vault for chat keys (Stored in SecureStore).
 - [ ] **Message Expiry:** Self-destructing messages with a countdown timer.
 
 ---

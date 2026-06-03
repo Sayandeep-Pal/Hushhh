@@ -3,9 +3,9 @@
 ## 🚀 Core Architecture
 - **Client:** React Native (Expo SDK 54, React Native 0.81.5)
     - **Routing:** Expo Router v6 (File-based navigation)
-    - **State Management:** React Context API (`AuthContext`, `SocketContext`)
-    - **Security:** `crypto-js` for AES/PBKDF2, `expo-crypto` for secure IV generation
-    - **Storage:** `expo-secure-store` for JWT and Identity persistence
+    - **State Management:** React Context API (`AuthContext`, `SocketContext`, `SecurityContext`)
+    - **Security:** `crypto-js` for AES/PBKDF2, `expo-crypto` for secure IV generation, `expo-local-authentication` for biometrics
+    - **Storage:** `expo-secure-store` for JWT, Identity persistence, and Secret Vault
     - **UI:** Custom Theme System (`useTheme`), `react-native-reanimated`, `@expo/vector-icons`
 - **Server:** Node.js (Express 5.2.1)
     - **Real-time:** Socket.io 4.8.3
@@ -23,11 +23,12 @@
 ├── client/                 # Expo React Native App
 │   ├── app/                # Expo Router pages
 │   │   ├── (auth)/         # Login/Identity creation (login.tsx)
-│   │   └── (main)/         # Chat list (index.tsx) and Conversation ([id].tsx)
-│   ├── context/            # Auth and Socket providers
+│   │   └── (main)/         # Chat list, Conversation, Vault, and Auto-Unlock
+│   │       ├── vault.tsx   # Secure storage for chat keys
+│   │       └── auto-unlock-settings.tsx # Configuration for automatic decryption
+│   ├── context/            # Auth, Socket, and Security providers
 │   ├── utils/              # security.ts (E2EE/Stealth), error-handler.ts
 │   ├── hooks/              # useTheme.ts, useThemeColor.ts
-│   ├── constants/          # Colors.ts (Vibrant & Playful theme)
 │   └── components/         # Shared UI components
 └── server/                 # Express Backend
     ├── index.js            # Main entry point (API + Sockets + Models)
@@ -56,6 +57,23 @@
 ### Key Synchronization
 - When a user changes their Secret Code, the client emits a `KEY_CHANGE` event via Socket.io.
 - The recipient receives a system alert prompting them to update their code to maintain the secure channel.
+
+### 🛡️ Advanced Security Features
+
+#### Secret Vault
+- **Purpose:** Secure local storage of "Secret Codes" (AES keys) for all active conversations.
+- **Protection:** Access is gated by Biometric (FaceID/Fingerprint) or App Passcode authentication.
+- **Persistence:** Keys are stored using `expo-secure-store`, ensuring they are encrypted at rest by the OS.
+- **UI:** A dedicated screen to view, copy, and manage keys for each contact.
+
+#### Auto-Unlock Chat & Timers
+- **Mechanism:** Allows the app to remember the Secret Code for specific contacts after the first manual entry.
+- **Configurable Timers:** Users can set how long a chat remains "unlocked" before requiring the code again:
+    - 5 Minutes / 30 Minutes / 1 Hour / 24 Hours / Always.
+- **Hierarchy:** 
+    - **Global Toggle:** Master switch to enable/disable the feature for all contacts.
+    - **Per-Contact Toggle:** Individual control for sensitive conversations.
+- **Privacy:** Even when auto-unlocked, the message payload remains steganographically hidden; it just decrypts automatically upon viewing.
 
 ## 📡 API & Socket Contracts
 
