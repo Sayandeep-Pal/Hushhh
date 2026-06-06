@@ -75,7 +75,7 @@ function LandingPage() {
                 </a>
                 <Link to="/overview" className="h-14 md:h-16 sm:w-64 border border-border px-6 md:px-8 flex items-center justify-center gap-4 group hover:bg-white/5 transition-colors cursor-pointer backdrop-blur-sm rounded-md">
                   <div className="w-2 h-2 bg-secondary/30 rounded-full group-hover:bg-secondary shadow-[0_0_8px_rgba(189,244,255,0.2)]" />
-                  <span className="font-mono text-[10px] tracking-[0.2em] text-text-secondary uppercase">View Protocol</span>
+                  <span className="font-mono text-[10px] tracking-[0.2em] text-text-secondary uppercase">View Documentation</span>
                 </Link>
               </div>
             </motion.div>
@@ -95,11 +95,11 @@ function LandingPage() {
       </section>
 
       {/* Feature Grid */}
-      <section id="protocol" className="border-y border-white/5 bg-surface/30 relative">
+      <section id="documentation" className="border-y border-white/5 bg-surface/30 relative">
         <div className="container mx-auto px-6 py-24 md:py-40">
           <div className="mb-20 md:mb-32 flex flex-col xl:flex-row justify-between items-start xl:items-end gap-12">
             <div className="max-w-xl">
-              <TerminalLabel status className="mb-6">Protocol_Infrastructure_091</TerminalLabel>
+              <TerminalLabel status className="mb-6">Infrastructure_091</TerminalLabel>
               <h2 className="font-display text-5xl md:text-7xl lg:text-8xl font-black uppercase leading-[0.85] tracking-tighter italic">Redacted <br /> Architecture.</h2>
             </div>
             <div className="font-mono text-[10px] md:text-xs text-text-secondary text-left space-y-3 uppercase tracking-[0.2em] leading-relaxed border-l-2 border-primary/20 pl-6 md:pl-10 shrink-0">
@@ -232,7 +232,7 @@ function Layout() {
 
 
       {/* Navigation */}
-      <nav className="fixed top-0 w-full z-[100] border-b border-white/5 bg-background/80 backdrop-blur-md">
+      <nav className="fixed top-0 w-full z-[100] border-b border-white/5 bg-background md:bg-background/80 md:backdrop-blur-md">
         <div className="max-w-[1440px] mx-auto px-6 h-16 md:h-20 flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3">
             <img src="/icon.png" alt="Hushhh" className="w-6 h-6 md:w-8 md:h-8" />
@@ -241,7 +241,7 @@ function Layout() {
           
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-12">
-            <Link to="/overview" className="font-mono text-[10px] tracking-[0.3em] text-text-secondary hover:text-primary transition-colors uppercase">Protocol</Link>
+            <Link to="/overview" className="font-mono text-[10px] tracking-[0.3em] text-text-secondary hover:text-primary transition-colors uppercase">Documentation</Link>
             <a href="#security" className="font-mono text-[10px] tracking-[0.3em] text-text-secondary hover:text-primary transition-colors uppercase">Security</a>
             <a 
               href="/Hushhh.apk" 
@@ -280,7 +280,7 @@ function Layout() {
                       className="block font-display text-5xl font-black uppercase italic tracking-tighter hover:text-primary"
                       onClick={() => setIsMenuOpen(false)}
                     >
-                      Protocol
+                      Documentation
                     </Link>
                   </motion.div>
                   <motion.a 
@@ -349,7 +349,7 @@ function Layout() {
           <div className="flex flex-col items-center gap-6 mt-8">
             <div className="flex items-center gap-3">
               <div className="w-1.5 h-1.5 bg-secondary rounded-full shadow-[0_0_8px_#BDF4FF]" />
-              <span className="font-mono text-[9px] text-secondary tracking-[0.4em] uppercase">Protocol_Active // Secured</span>
+              <span className="font-mono text-[9px] text-secondary tracking-[0.4em] uppercase">System_Active // Secured</span>
             </div>
             <span className="font-mono text-[8px] text-text-secondary opacity-30 tracking-[0.5em] uppercase">
               [END_OF_TRANSMISSION_2026_EDITION]

@@ -59,7 +59,7 @@ export default function Overview() {
         <header className="mb-24 md:mb-32 max-w-3xl">
           <div className="flex items-center gap-4 mb-8 font-mono text-[10px] tracking-[0.4em] text-primary uppercase">
             <Terminal size={14} />
-            Hushhh Protocol Documentation
+            Hushhh Documentation
           </div>
           <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-black uppercase italic leading-[0.85] tracking-tighter mb-10">
             How it <br /> <span className="text-primary">Works.</span>
