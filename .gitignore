@@ -56,5 +56,4 @@ server/.env
 client/.env
 .env
 
-/web/public/screenshots
 !Hushhh.apk
