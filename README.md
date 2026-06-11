@@ -1,5 +1,5 @@
 # (✯‿✯) Hushhh
-
+ 
 **Hushhh** is a privacy-first, end-to-end encrypted (E2EE) messaging application designed for absolute stealth. Beyond standard encryption, it employs **Stealth Steganography** to hide encrypted payloads within seemingly innocent emoji icons, making your secure conversations invisible to shoulder-surfers and server-side analysis.
 
 --- 
