@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Alert } from 'react-native';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
 import axios from 'axios';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 
@@ -27,6 +27,22 @@ const CODENAME_KEY = 'agent_codename';
 const TOKEN_KEY = 'agent_token';
 const USER_ID_KEY = 'agent_user_id';
 const AVATAR_SEED_KEY = 'agent_avatar_seed';
+const DEVICE_SECRET_KEY = 'identity_device_secret_v1';
+
+const secretFromRandomBytes = () => Array.from(Crypto.getRandomBytes(32))
+  .map((byte) => byte.toString(16).padStart(2, '0'))
+  .join('');
+
+const saveSession = async (token: string, profile: Profile, deviceSecret?: string) => {
+  axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+  await Promise.all([
+    SecureStore.setItemAsync(TOKEN_KEY, token),
+    SecureStore.setItemAsync(CODENAME_KEY, profile.username),
+    SecureStore.setItemAsync(USER_ID_KEY, profile.id),
+    SecureStore.setItemAsync(AVATAR_SEED_KEY, profile.avatarSeed || profile.username),
+    deviceSecret ? SecureStore.setItemAsync(DEVICE_SECRET_KEY, deviceSecret) : Promise.resolve(),
+  ]);
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<Profile | null>(null);
@@ -35,100 +51,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { expoPushToken } = usePushNotifications();
 
   useEffect(() => {
-    const registerToken = async () => {
-      if (user && expoPushToken) {
-        try {
-          await axios.post(`${API_URL}/api/users/push-token`, {
-            pushToken: expoPushToken
-          });
-        } catch (error: any) {
-          // If this fails in the APK, it might be due to API_URL issues or network
-          Alert.alert('Push Registration Failed', `Could not save notification token on server: ${error.message}`);
-        }
-      }
-    };
-
-    registerToken();
-  }, [user, expoPushToken]);
+    if (!user || !expoPushToken || !token) return;
+    axios.post(`${API_URL}/api/users/push-token`, { pushToken: expoPushToken }).catch(() => {
+      // Push registration is optional and must not disrupt an authenticated session.
+    });
+  }, [user, expoPushToken, token]);
 
   useEffect(() => {
-    const initAuth = async () => {
+    const restoreSession = async () => {
       try {
-        const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-        const storedCodename = await SecureStore.getItemAsync(CODENAME_KEY);
-        const storedId = await SecureStore.getItemAsync(USER_ID_KEY);
-        const storedAvatarSeed = await SecureStore.getItemAsync(AVATAR_SEED_KEY);
-
-        if (storedToken && storedId && storedCodename) {
-          setToken(storedToken);
-          const userData = { id: storedId, username: storedCodename, avatarSeed: storedAvatarSeed || storedCodename };
-          setUser(userData);
-          axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-
-          // Verify with backend
-          try {
-            const response = await axios.post(`${API_URL}/api/auth/anonymous`, {
-              username: storedCodename,
-              userId: storedId,
-              avatarSeed: storedAvatarSeed
-            });
-            const { token: newToken, user: updatedUser } = response.data;
-            setToken(newToken);
-            setUser(updatedUser);
-            axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-            await SecureStore.setItemAsync(TOKEN_KEY, newToken);
-            if (updatedUser.avatarSeed) {
-              await SecureStore.setItemAsync(AVATAR_SEED_KEY, updatedUser.avatarSeed);
-            }
-          } catch (error: any) {
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
-              await signOut();
-            }
-          }
-        }
-      } catch (error: any) {
+        const [storedId, deviceSecret] = await Promise.all([
+          SecureStore.getItemAsync(USER_ID_KEY),
+          SecureStore.getItemAsync(DEVICE_SECRET_KEY),
+        ]);
+        if (!storedId || !deviceSecret) return;
+        const response = await axios.post(`${API_URL}/api/auth/session`, { userId: storedId, deviceSecret });
+        const nextToken: string = response.data.token;
+        const nextUser: Profile = response.data.user;
+        await saveSession(nextToken, nextUser);
+        setToken(nextToken);
+        setUser(nextUser);
+      } catch {
+        await Promise.all([
+          SecureStore.deleteItemAsync(TOKEN_KEY),
+          SecureStore.deleteItemAsync(CODENAME_KEY),
+          SecureStore.deleteItemAsync(USER_ID_KEY),
+          SecureStore.deleteItemAsync(AVATAR_SEED_KEY),
+          SecureStore.deleteItemAsync(DEVICE_SECRET_KEY),
+        ]);
+        delete axios.defaults.headers.common.Authorization;
       } finally {
         setIsLoading(false);
       }
-      };
-
-    initAuth();
+    };
+    restoreSession();
   }, []);
 
   const signInAnonymously = async (username: string, avatarSeed?: string) => {
-    try {
-      const storedId = await SecureStore.getItemAsync(USER_ID_KEY);
-      const response = await axios.post(`${API_URL}/api/auth/anonymous`, {
-        username,
-        userId: storedId,
-        avatarSeed
-      });
+    const [storedId, deviceSecret] = await Promise.all([
+      SecureStore.getItemAsync(USER_ID_KEY),
+      SecureStore.getItemAsync(DEVICE_SECRET_KEY),
+    ]);
 
-      const { token: newToken, user: userData } = response.data;
-      
-      setToken(newToken);
-      setUser(userData);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      
-      await SecureStore.setItemAsync(TOKEN_KEY, newToken);
-      await SecureStore.setItemAsync(CODENAME_KEY, userData.username);
-      await SecureStore.setItemAsync(USER_ID_KEY, userData.id);
-      if (userData.avatarSeed) {
-        await SecureStore.setItemAsync(AVATAR_SEED_KEY, userData.avatarSeed);
-      }
-    } catch (error: any) {
-      throw error;
+    let response;
+    let secretToPersist = deviceSecret;
+    if (storedId && deviceSecret) {
+      response = await axios.patch(`${API_URL}/api/auth/profile`, { username, avatarSeed });
+      const currentToken = token;
+      if (!currentToken) throw new Error('Your identity session has expired. Please restart the app.');
+      response = { data: { token: currentToken, user: response.data.user } };
+    } else {
+      secretToPersist = secretFromRandomBytes();
+      response = await axios.post(`${API_URL}/api/auth/register`, { username, avatarSeed, deviceSecret: secretToPersist });
     }
+
+    const nextToken: string = response.data.token;
+    const nextUser: Profile = response.data.user;
+    await saveSession(nextToken, nextUser, secretToPersist || undefined);
+    setToken(nextToken);
+    setUser(nextUser);
   };
 
   const signOut = async () => {
-    await SecureStore.deleteItemAsync(CODENAME_KEY);
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_ID_KEY);
-    await SecureStore.deleteItemAsync(AVATAR_SEED_KEY);
+    try {
+      if (token) await axios.post(`${API_URL}/api/auth/sign-out-everywhere`);
+    } catch {
+      // Local credential removal is still required when the network is unavailable.
+    }
+    await Promise.all([
+      SecureStore.deleteItemAsync(CODENAME_KEY),
+      SecureStore.deleteItemAsync(TOKEN_KEY),
+      SecureStore.deleteItemAsync(USER_ID_KEY),
+      SecureStore.deleteItemAsync(AVATAR_SEED_KEY),
+      SecureStore.deleteItemAsync(DEVICE_SECRET_KEY),
+    ]);
     setToken(null);
     setUser(null);
-    delete axios.defaults.headers.common['Authorization'];
+    delete axios.defaults.headers.common.Authorization;
   };
 
   return (
@@ -140,8 +139,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

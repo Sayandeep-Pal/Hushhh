@@ -1,9 +1,8 @@
-/* eslint-disable react/no-unknown-property */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { forwardRef, useImperativeHandle, useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera } from '@react-three/drei';
-// @ts-ignore
 import { degToRad } from 'three/src/math/MathUtils.js';
 
 import './Beams.css';
@@ -289,7 +288,7 @@ const MergedPlanes = forwardRef(({ material, width, count, height }: any, ref) =
   );
   useFrame((_, delta) => {
     if (mesh.current) {
-      // @ts-ignore
+      // @ts-expect-error Custom shader material exposes uniforms at runtime.
       mesh.current.material.uniforms.time.value += 0.1 * delta;
     }
   });

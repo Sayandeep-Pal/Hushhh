@@ -45,7 +45,7 @@ export default function HowToUseScreen() {
           if (router.canGoBack()) {
             router.back();
           } else {
-            router.replace('/(main)');
+            router.replace('/(main)/(tabs)');
           }
         }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color={theme.text} />
@@ -77,7 +77,7 @@ export default function HowToUseScreen() {
         <View style={styles.warningBox}>
           <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
           <Text style={styles.warningText}>
-            Hush does not have a "Forgot Password" feature. Your Secret Codes are yours alone. If you lose them, your messages cannot be recovered.
+            Hush does not have a &quot;Forgot Password&quot; feature. Your Secret Codes are yours alone. If you lose them, your messages cannot be recovered.
           </Text>
         </View>
       </ScrollView>

@@ -22,7 +22,7 @@ export default function OnboardingScreen() {
     setLoading(true);
     try {
       await signInAnonymously(username);
-      router.replace('/(main)');
+      router.replace('/(main)/(tabs)');
     } catch (e: any) {
       Alert.alert('Identity Error', e.message || 'Could not create your secret identity.');
     } finally {

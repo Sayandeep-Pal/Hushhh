@@ -1,7 +1,16 @@
 import { motion } from 'framer-motion';
 import { Lock, EyeOff, ShieldCheck, Zap, Database, Terminal } from 'lucide-react';
 
-const TechStep = ({ number, title, description, screenshot, icon: Icon, isLast = false }: any) => (
+interface TechStepProps {
+  number: string;
+  title: string;
+  description: string;
+  screenshot: string;
+  icon: typeof Lock;
+  isLast?: boolean;
+}
+
+const TechStep = ({ number, title, description, screenshot, icon: Icon, isLast = false }: TechStepProps) => (
   <div className="relative pb-24 md:pb-32 last:pb-0">
     {!isLast && <div className="absolute left-[19px] top-12 bottom-0 w-[1px] bg-white/5 hidden md:block" />}
     
@@ -65,7 +74,7 @@ export default function Overview() {
             How it <br /> <span className="text-primary">Works.</span>
           </h1>
           <p className="text-lg md:text-xl text-text-secondary leading-relaxed font-light">
-            Hushhh isn't just a messenger. It's a steganographic abstraction layer designed to make private communication indistinguishable from background noise.
+            Hushhh is an encrypted-chat prototype with a zero-width visual-obfuscation layer. Its security architecture is being rebuilt before public release.
           </p>
         </header>
 
@@ -74,7 +83,7 @@ export default function Overview() {
             number="01"
             icon={Lock}
             title="Cold Entry."
-            description="Unlike standard apps that require phone numbers or emails, Hushhh creates a unique cryptographic identity on your device. Every identity is isolated, anonymous, and untraceable."
+            description="Hushhh creates a pseudonymous device-held identity without requiring a phone number or email. It does not promise anonymity or untraceability."
             screenshot="/screenshots/splash&identity.jpg"
           />
 
@@ -82,7 +91,7 @@ export default function Overview() {
             number="02"
             icon={ShieldCheck}
             title="The Handshake."
-            description="Security starts with the Secret Code. You and your contact enter a matching code locally. Hushhh uses PBKDF2 with 1000+ iterations to derive a shared 256-bit AES key. This key never travels through any server."
+            description="Security starts with an out-of-band Secret Code. It is never included in an invite link. The app uses a per-conversation salt and a strengthened local derivation step while a reviewed protocol migration is underway."
             screenshot="/screenshots/handshake req.jpg"
           />
 
@@ -90,7 +99,7 @@ export default function Overview() {
             number="03"
             icon={EyeOff}
             title="Stealth Encoding."
-            description="When you send a message, it is encrypted via AES-256-CBC. The resulting ciphertext is then mapped to zero-width Unicode characters. These characters are completely invisible to humans and most scanning software."
+            description="When you send a message, an authenticated encrypted envelope can be mapped to zero-width Unicode characters. This is visual obfuscation, not a claim to hide metadata or defeat analysis."
             screenshot="/screenshots/stealth mode.jpg"
           />
 
@@ -98,7 +107,7 @@ export default function Overview() {
             number="04"
             icon={Zap}
             title="Carrier Delivery."
-            description="The invisible payload is attached to a randomly selected 'Carrier Icon'. On the screen and on the server, only this icon is visible. To the world, you're just sending a kaomoji. To your contact, it's a secure data packet."
+            description="The invisible payload is attached to a randomly selected carrier icon. The server still processes encrypted payloads and operational metadata such as timing and conversation membership."
             screenshot="/screenshots/secure chat room.jpg"
           />
 
@@ -106,7 +115,7 @@ export default function Overview() {
             number="05"
             icon={Database}
             title="The Vault."
-            description="All your secret codes are stored in an OS-level secure vault, protected by your device biometrics. You can set auto-lock timers to wipe decrypted states from memory automatically."
+            description="Vault and app-lock behavior are under active revision. Do not rely on this prototype to protect sensitive key material on a compromised or unattended device."
             screenshot="/screenshots/settings and vault.jpg"
             isLast={true}
           />

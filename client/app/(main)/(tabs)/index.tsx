@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert, Image, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Modal, Share, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,20 +10,21 @@ import QRCode from 'react-native-qrcode-svg';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
-import { handleError, getErrorMessage } from '../../../utils/error-handler';
+import { handleError } from '../../../utils/error-handler';
 import { useSocket } from '@/context/SocketContext';
 import { useTheme } from '../../../hooks/useTheme';
 import { Avatar } from '../../../components/Avatar';
 
 export default function ChatListScreen() {
-  const { user, profile, signOut, token } = useAuth();
+  const { user, profile, token } = useAuth();
   const { isConnected, socket } = useSocket();
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [recentChats, setRecentChats] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
-  const [shareSecretCode, setShareSecretCode] = useState('');
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -31,8 +32,12 @@ export default function ChatListScreen() {
   const fetchData = async () => {
     if (!token) return;
     try {
-      const recentRes = await axios.get(`${API_URL}/api/users/recent`);
-      setRecentChats(recentRes.data);
+      const recentRes = await axios.get(`${API_URL}/api/conversations/recent`);
+      setRecentChats(recentRes.data.map((conversation: any) => ({
+        ...conversation,
+        ...conversation.participant,
+        conversationId: conversation.id,
+      })));
     } catch (error: any) {
     }
   };
@@ -77,27 +82,20 @@ export default function ChatListScreen() {
     }
   }, [socket]);
 
-  const connectToUser = async (targetId: string, targetName?: string, sharedCode?: string) => {
+  const connectToUser = async (targetId: string, targetName?: string) => {
     if (targetId === user?.id) {
       Alert.alert('Mirror Reality', "You can't chat with yourself... yet.");
       return;
     }
 
     try {
-      let name = targetName;
-      if (!name) {
-        // Use the new dedicated endpoint to fetch the secret agent's name
-        const response = await axios.get(`${API_URL}/api/users/${targetId}`);
-        name = response.data.username;
-      }
-
-      const roomId = [user?.id, targetId].sort().join('_');
+      const response = await axios.post(`${API_URL}/api/conversations/direct`, { userId: targetId });
+      const conversation = response.data.conversation;
       router.push({ 
         pathname: '/(main)/chat/[id]', 
         params: { 
-          id: roomId, 
-          name: name || 'Secret Agent',
-          sharedCode: sharedCode || ''
+          id: conversation.id,
+          name: conversation.participant?.username || targetName || 'Secret Agent',
         } 
       });
     } catch (error: any) {
@@ -131,27 +129,26 @@ export default function ChatListScreen() {
     }
   };
 
-  const shareMyIdentity = async () => {
-    const trimmedCode = shareSecretCode.trim();
-    if (!trimmedCode) {
-      Alert.alert('Security Required', 'Please set a Secret Code to encrypt your identity before sharing.');
-      return;
-    }
-
-    const finalUrl = Linking.createURL('connect', {
-      queryParams: { 
-        id: user?.id, 
-        name: profile?.username,
-        code: trimmedCode
-      },
-    });
-    
+  const createInvite = async () => {
+    if (!token) return null;
+    setIsCreatingInvite(true);
     try {
-      await Share.share({
-        message: `Connect with me on Hushhh! My codename is ${profile?.username}. I've set a secure code for our chat. Scan my QR or click: ${finalUrl}`,
-        url: finalUrl,
-      });
-    } catch (e) {
+      const response = await axios.post(`${API_URL}/api/invites`);
+      const finalUrl = Linking.createURL('connect', { queryParams: { invite: response.data.token } });
+      setInviteUrl(finalUrl);
+      return finalUrl;
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
+  const shareMyIdentity = async () => {
+    try {
+      const finalUrl = inviteUrl || await createInvite();
+      if (!finalUrl) return;
+      await Share.share({ message: `Connect with me on Hushhh: ${finalUrl}`, url: finalUrl });
+    } catch {
+      Alert.alert('Invite unavailable', 'Could not create a connection invite. Please try again.');
     }
   };
 
@@ -177,11 +174,11 @@ export default function ChatListScreen() {
       <TouchableOpacity 
         style={styles.chatCard}
         onPress={() => {
-          const roomId = [user?.id, item.id].sort().join('_');
-          router.push({ 
-            pathname: '/(main)/chat/[id]', 
-            params: { id: roomId, name: item.username } 
-          });
+          if (item.conversationId) {
+            router.push({ pathname: '/(main)/chat/[id]', params: { id: item.conversationId, name: item.username } });
+          } else {
+            connectToUser(item.id, item.username);
+          }
         }}
       >
         <View style={styles.avatarWrapper}>
@@ -216,14 +213,6 @@ export default function ChatListScreen() {
     );
   };
 
-  const connectUrl = Linking.createURL('connect', {
-    queryParams: { 
-      id: user?.id, 
-      name: profile?.username,
-      code: shareSecretCode || undefined 
-    },
-  });
-
   const displayData = search.length > 2 ? searchResults : recentChats;
   const [profileBase, profileDisc] = (profile?.username || 'Anonymous').split('#');
 
@@ -238,7 +227,7 @@ export default function ChatListScreen() {
           <Text style={styles.headerTitle}>Chats</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => setShowIdentityModal(true)} style={styles.actionButton}>
+          <TouchableOpacity onPress={() => { setShowIdentityModal(true); createInvite(); }} style={styles.actionButton}>
             <Ionicons name="qr-code-outline" size={24} color={theme.accent} />
           </TouchableOpacity>
         </View>
@@ -313,29 +302,16 @@ export default function ChatListScreen() {
                 contentContainerStyle={styles.modalScrollContent}
               >
                 <Text style={styles.modalTitle}>Your Secret Identity</Text>
-                <Text style={styles.modalSubtitle}>Share this QR or link with trusted allies only.</Text>
+                <Text style={styles.modalSubtitle}>This one-time invite expires after 24 hours. It contains no Secret Code.</Text>
                 
                 <View style={styles.modalAvatarWrapper}>
                   <Avatar name={profile?.username || 'Anonymous'} seed={profile?.avatarSeed} size={80} />
                 </View>
 
-                <View style={styles.shareCodeInputContainer}>
-                  <Text style={styles.shareCodeLabel}>Step 1: Set a Secret Code</Text>
-                  <TextInput
-                    style={styles.shareCodeInput}
-                    placeholder="e.g. MySecret123"
-                    placeholderTextColor={theme.textTertiary}
-                    value={shareSecretCode}
-                    onChangeText={setShareSecretCode}
-                    autoCapitalize="none"
-                  />
-                  <Text style={styles.shareCodeHint}>This code is required to generate your secure QR identity.</Text>
-                </View>
-
-                {shareSecretCode ? (
+                {inviteUrl ? (
                   <View style={styles.qrContainer}>
                     <QRCode
-                      value={connectUrl}
+                      value={inviteUrl}
                       size={200}
                       color={theme.qrForeground}
                       backgroundColor={theme.qrBackground}
@@ -345,7 +321,7 @@ export default function ChatListScreen() {
                   <View style={[styles.qrContainer, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
                     <Ionicons name="lock-closed" size={60} color={theme.textTertiary} />
                     <Text style={{ color: theme.textTertiary, marginTop: 10, fontWeight: '700', textAlign: 'center' }}>
-                      Enter a code above{"\n"}to unlock your QR
+                      {isCreatingInvite ? 'Creating one-time invite…' : 'Invite unavailable'}
                     </Text>
                   </View>
                 )}
@@ -356,13 +332,13 @@ export default function ChatListScreen() {
                 </Text>
                 
                 <TouchableOpacity 
-                  style={[styles.shareButton, !shareSecretCode && { opacity: 0.5 }]} 
+                  style={[styles.shareButton, !inviteUrl && { opacity: 0.5 }]}
                   onPress={shareMyIdentity}
-                  disabled={!shareSecretCode}
+                  disabled={!inviteUrl || isCreatingInvite}
                 >
                   <Ionicons name="share-social-outline" size={20} color="#FFF" />
                   <Text style={styles.shareButtonText}>
-                    {shareSecretCode ? 'Share Connection Link' : 'Locked'}
+                    {inviteUrl ? 'Share Connection Link' : 'Preparing…'}
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -512,6 +488,17 @@ const createStyles = (theme: any) => StyleSheet.create({
   avatarWrapper: {
     marginRight: 16,
     position: 'relative',
+  },
+  onlineBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: theme.secondary,
+    borderWidth: 2,
+    borderColor: theme.surface,
   },
   chatInfo: {
     flex: 1,

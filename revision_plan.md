@@ -6,6 +6,20 @@ Hushhh has a compelling interface and a useful prototype architecture, but it mu
 
 The current product encrypts message content locally, but it does not reliably authenticate identities, authorize conversations, protect invite secrets, authenticate ciphertext, or cryptographically enforce the vault lock. The immediate goal is therefore to turn it into a correctly authenticated encrypted-chat product before adding more features.
 
+## Implementation status — 2026-08-08
+
+The following baseline changes are implemented in the current working tree and covered by static/unit checks:
+
+- Device-held high-entropy credentials replace user-ID-only login; access JWTs are issuer/audience-bound, short-lived, and revocable through a session version.
+- Direct conversations now have explicit membership records; history, read state, sockets, typing, send, and deletion require membership.
+- Sockets reject missing/invalid tokens, derive the sender from the session, validate payloads, use private room namespaces, and acknowledge message persistence.
+- Invite URLs contain only a short-lived, one-time opaque token; Secret Codes are removed from links and QR payloads.
+- New envelopes use per-conversation salts, strengthened PBKDF2 derivation, and encrypt-then-MAC authentication while the project migrates to a reviewed AEAD/protocol solution.
+- Plaintext app-passcode storage is removed; vault contents are no longer eagerly loaded before a protected session unlocks; active chat keys are cleared when the app backgrounds.
+- Server unit tests, client typecheck, web lint/build, and a CI workflow have been added.
+
+The following remain release blockers and require further implementation and/or outside authority: deployment secret rotation, legacy MongoDB identity/message migration, production CORS/origin configuration, refresh-token/device-key protocol, a reviewed AEAD/ratchet protocol, encrypted passcode-only vault storage, Redis-backed multi-instance state, mobile end-to-end tests, and independent security review. Do not mark the production launch checklist complete until these are finished.
+
 ### Non-negotiable release gates
 
 - No account takeover through a user ID, QR code, search result, or deep link.

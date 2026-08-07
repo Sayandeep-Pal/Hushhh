@@ -81,8 +81,10 @@ function decodeFromZeroWidth(zwString: string): string {
  */
 export function deriveKey(secretCode: string, salt: string): string {
   return CryptoJS.PBKDF2(secretCode, salt, {
-    keySize: 256 / 32,
-    iterations: 1000
+    // 512 bits are split into independent encryption and authentication keys.
+    keySize: 512 / 32,
+    iterations: 310000,
+    hasher: CryptoJS.algo.SHA256,
   }).toString();
 }
 
@@ -91,8 +93,17 @@ export function deriveKey(secretCode: string, salt: string): string {
  * Hash the first 8 chars of the PBKDF2-derived key (hex string).
  */
 export function getKeyFingerprint(keyHex: string): string {
-  return CryptoJS.SHA256(keyHex.substring(0, 8)).toString().substring(0, 16);
+  return CryptoJS.SHA256(keyHex).toString().substring(0, 16);
 }
+
+const constantTimeEqual = (left: string, right: string) => {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+};
 
 /**
  * Encrypts a plaintext string using AES-256-CBC and hides it in a carrier icon using Zero-Width steganography.
@@ -100,7 +111,8 @@ export function getKeyFingerprint(keyHex: string): string {
  */
 export function encryptMessage(plaintext: string, keyHex: string): string {
   try {
-    const key = CryptoJS.enc.Hex.parse(keyHex);
+    const encryptionKey = CryptoJS.enc.Hex.parse(keyHex.substring(0, 64));
+    const authenticationKey = CryptoJS.enc.Hex.parse(keyHex.substring(64, 128));
     const fingerprint = getKeyFingerprint(keyHex);
     
     // Use expo-crypto for secure random IV generation
@@ -109,14 +121,18 @@ export function encryptMessage(plaintext: string, keyHex: string): string {
       Array.from(ivBytes).map(b => b.toString(16).padStart(2, '0')).join('')
     );
     
-    const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
+    const encrypted = CryptoJS.AES.encrypt(plaintext, encryptionKey, {
       iv: iv,
       mode: CryptoJS.mode.CBC,
       padding: CryptoJS.pad.Pkcs7
     });
     
-    // Combine Fingerprint + IV + Ciphertext
-    const payload = fingerprint + ':' + iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.ciphertext.toString(CryptoJS.enc.Hex);
+    const ivHex = iv.toString(CryptoJS.enc.Hex);
+    const ciphertextHex = encrypted.ciphertext.toString(CryptoJS.enc.Hex);
+    // Encrypt-then-MAC makes the legacy CBC transport tamper-evident until an AEAD library is adopted.
+    const authenticatedData = `v2:${fingerprint}:${ivHex}:${ciphertextHex}`;
+    const tag = CryptoJS.HmacSHA256(authenticatedData, authenticationKey).toString(CryptoJS.enc.Hex);
+    const payload = `${authenticatedData}:${tag}`;
     
     // Encode to Zero-Width
     const hiddenData = encodeToZeroWidth(payload);
@@ -136,7 +152,8 @@ export function encryptMessage(plaintext: string, keyHex: string): string {
  */
 export function decryptMessage(carrierWithHidden: string, keyHex: string): string {
   try {
-    const key = CryptoJS.enc.Hex.parse(keyHex);
+    const encryptionKey = CryptoJS.enc.Hex.parse(keyHex.substring(0, 64));
+    const authenticationKey = CryptoJS.enc.Hex.parse(keyHex.substring(64, 128));
     const currentFingerprint = getKeyFingerprint(keyHex);
     
     // Extract zero-width data
@@ -146,25 +163,21 @@ export function decryptMessage(carrierWithHidden: string, keyHex: string): strin
     const payload = decodeFromZeroWidth(match[0]);
     const parts = payload.split(':');
     
-    // Handle legacy format (iv:ciphertext) and new format (fingerprint:iv:ciphertext)
-    let fingerprint, ivHex, ciphertextHex;
-    if (parts.length === 3) {
-      [fingerprint, ivHex, ciphertextHex] = parts;
-    } else {
-      [ivHex, ciphertextHex] = parts;
-      fingerprint = null; // Legacy message
-    }
+    if (parts.length !== 5 || parts[0] !== 'v2') return '(－‸－) [Unsupported legacy payload]';
+    const [, fingerprint, ivHex, ciphertextHex, tag] = parts;
     
     if (!ivHex || !ciphertextHex) return '(－‸－) [Invalid payload]';
 
-    // Verify fingerprint if present
-    if (fingerprint && fingerprint !== currentFingerprint) {
+    if (fingerprint !== currentFingerprint) {
       return 'FINGERPRINT_MISMATCH';
     }
+    const authenticatedData = `v2:${fingerprint}:${ivHex}:${ciphertextHex}`;
+    const expectedTag = CryptoJS.HmacSHA256(authenticatedData, authenticationKey).toString(CryptoJS.enc.Hex);
+    if (!constantTimeEqual(tag, expectedTag)) return '(－‸－) [Message authentication failed]';
 
     const decrypted = CryptoJS.AES.decrypt(
       { ciphertext: CryptoJS.enc.Hex.parse(ciphertextHex) } as any,
-      key,
+      encryptionKey,
       {
         iv: CryptoJS.enc.Hex.parse(ivHex),
         mode: CryptoJS.mode.CBC,

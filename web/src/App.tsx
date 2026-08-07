@@ -60,8 +60,8 @@ function LandingPage() {
                 <span className="text-primary drop-shadow-[0_0_15px_rgba(187,195,255,0.2)]">EXIST.</span>
               </h1>
               <p className="text-lg md:text-xl text-text-secondary leading-relaxed font-light mb-12 max-w-lg">
-                Total steganographic E2EE. No metadata. No identity leaks. <br className="hidden sm:block" />
-                <span className="text-text-primary">Designed for absolute silence.</span>
+                Encrypted-chat prototype. Security revision in progress. <br className="hidden sm:block" />
+                <span className="text-text-primary">Do not use for sensitive communication yet.</span>
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4">
@@ -124,12 +124,12 @@ function LandingPage() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-16 md:gap-y-24">
             {[
-              { icon: EyeOff, t: "Zero-Width Stealth", d: "Payloads are hidden in invisible Unicode whitespace. Even shoulder-surfers see nothing but carrier icons." },
-              { icon: Lock, t: "Cold Derivation", d: "PBKDF2 keys derived locally with 1000+ iterations. Your secrets never leave the secure hardware store." },
-              { icon: Cpu, t: "Local Handshake", d: "Discovery is purely decentralized. Connect via cryptographic deep links or secure QR codes." },
-              { icon: ShieldAlert, t: "Auto-Lock Timers", d: "Self-destructing decryption sessions. Access expires automatically based on your defined threat level." },
-              { icon: Shield, t: "Biometric Vault", d: "Keys are gated by OS-level biometrics and secured by the device Secure Enclave." },
-              { icon: Share2, t: "Ghost Identities", d: "Create unlimited burner accounts with zero PII. No phone, no email, no trace." }
+              { icon: EyeOff, t: "Visual Obfuscation", d: "Payloads can be represented with invisible Unicode whitespace behind carrier icons. This does not conceal metadata." },
+              { icon: Lock, t: "Local Derivation", d: "Conversation codes are derived locally with a per-conversation salt. A reviewed key protocol is in progress." },
+              { icon: Cpu, t: "One-Time Invites", d: "Connect through short-lived opaque invite links. Invites do not include a Secret Code." },
+              { icon: ShieldAlert, t: "Security Revision", d: "Authentication, encrypted sessions, and vault controls are being rebuilt before public release." },
+              { icon: Shield, t: "Device Protection", d: "Platform security features are used where available; do not treat this build as a hardened vault." },
+              { icon: Share2, t: "Pseudonymous Identities", d: "No phone number or email is required, but operational metadata still exists." }
             ].map((f, i) => (
               <motion.div 
                 key={i} 

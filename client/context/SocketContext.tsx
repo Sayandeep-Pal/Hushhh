@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import * as Notifications from 'expo-notifications';
 import { Vibration } from 'react-native';
 
 export interface SocketContextType {
@@ -47,7 +46,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.senderId === user?.id) return;
 
         // Only vibrate if we ARE in that specific room
-        if (data.roomId === activeRoomRef.current) {
+        if (data.conversationId === activeRoomRef.current) {
           Vibration.vibrate();
         }
       });

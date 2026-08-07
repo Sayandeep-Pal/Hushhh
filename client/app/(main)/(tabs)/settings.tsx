@@ -12,7 +12,6 @@ export default function SettingsScreen() {
   const { 
     isBiometricEnabled, 
     isPasscodeEnabled, 
-    appPasscode, 
     toggleBiometrics, 
     setPasscode,
     hasHardware
@@ -73,8 +72,8 @@ export default function SettingsScreen() {
   };
 
   const saveNewPasscode = async () => {
-    if (newPasscode.length < 4) {
-      Alert.alert('Invalid Passcode', 'Passcode must be at least 4 digits.');
+    if (!/^\d{6,}$/.test(newPasscode)) {
+      Alert.alert('Invalid Passcode', 'Passcode must contain at least 6 digits.');
       return;
     }
     if (newPasscode !== confirmPasscode) {
@@ -490,14 +489,6 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: theme.primary,
     fontWeight: '600',
     marginTop: 2,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
   },
   settingInfo: {
     flexDirection: 'row',

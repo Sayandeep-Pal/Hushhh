@@ -69,11 +69,11 @@ export const usePushNotifications = (): PushNotificationState => {
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      const { roomId, senderUsername } = response.notification.request.content.data;
-      if (roomId) {
+      const { conversationId, senderUsername } = response.notification.request.content.data;
+      if (conversationId) {
         router.push({
           pathname: '/(main)/chat/[id]' as any,
-          params: { id: roomId as string, name: (senderUsername as string) || 'Secure Chat' }
+          params: { id: conversationId as string, name: (senderUsername as string) || 'Secure Chat' }
         });
       }
     });

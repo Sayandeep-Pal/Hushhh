@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Image, Pressable } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Pressable, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,6 @@ import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
 import { useSecurity } from '../../../context/SecurityContext';
 import { encryptMessage, decryptMessage, deriveKey } from '../../../utils/security';
-import * as SecureStore from 'expo-secure-store';
 import * as Clipboard from 'expo-clipboard';
 import axios from 'axios';
 import { useTheme } from '../../../hooks/useTheme';
@@ -22,10 +21,10 @@ interface Message {
   timestamp: string;
 }
 
-import { handleError, getErrorMessage } from '../../../utils/error-handler';
+import { handleError } from '../../../utils/error-handler';
 
 export default function ChatRoomScreen() {
-  const { id, name, sharedCode } = useLocalSearchParams<{ id: string, name: string, sharedCode?: string }>();
+  const { id, name } = useLocalSearchParams<{ id: string, name: string }>();
   const { user } = useAuth();
   const { socket, isConnected, setActiveRoomId } = useSocket();
   const { 
@@ -43,7 +42,9 @@ export default function ChatRoomScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [secretCode, setSecretCode] = useState('');
-  const [isLocked, setIsLocked] = useState(!sharedCode);
+  const [isLocked, setIsLocked] = useState(true);
+  const [conversationSalt, setConversationSalt] = useState<string | null>(null);
+  const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [encryptionKey, setEncryptionKey] = useState<string | null>(null);
   const [previousKey, setPreviousKey] = useState<string | null>(null);
   const [candidateKey, setCandidateKey] = useState<string | null>(null);
@@ -71,9 +72,22 @@ export default function ChatRoomScreen() {
   // Keep track if we have EVER had a key this session
   const [hasDerivedKeyOnce, setHasDerivedKeyOnce] = useState(false);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') return;
+      setEncryptionKey(null);
+      setPreviousKey(null);
+      setCandidateKey(null);
+      setCandidateSecretCode(null);
+      setInputText('');
+      setIsLocked(true);
+    });
+    return () => subscription.remove();
+  }, []);
+
   // Auto-unlock logic based on user preferences and timer
   useEffect(() => {
-    if (id && vault[id] && !encryptionKey && isLocked && !sharedCode && autoUnlockGlobal) {
+    if (id && conversationSalt && vault[id] && !encryptionKey && isLocked && autoUnlockGlobal) {
       const config = autoUnlockConfig[id];
       if (config && config.enabled) {
         let shouldAutoUnlock = false;
@@ -93,8 +107,7 @@ export default function ChatRoomScreen() {
         if (shouldAutoUnlock) {
           try {
             const storedCode = vault[id].code.trim();
-            const salt = 'hushhh_secret_salt';
-            const key = deriveKey(storedCode, salt);
+            const key = deriveKey(storedCode, conversationSalt);
             setEncryptionKey(key);
             setIsLocked(false);
             setShowCodeModal(false);
@@ -103,52 +116,26 @@ export default function ChatRoomScreen() {
         }
       }
     }
-  }, [id, vault, sharedCode, autoUnlockGlobal, autoUnlockConfig]);
-
-  // Auto-apply shared code if provided
-  useEffect(() => {
-    if (sharedCode && !encryptionKey && isLocked) {
-      try {
-        const trimmedSharedCode = sharedCode.trim();
-        const salt = 'hushhh_secret_salt';
-        const key = deriveKey(trimmedSharedCode, salt);
-        setEncryptionKey(key);
-        setIsLocked(false);
-        setShowCodeModal(false);
-        setHasDerivedKeyOnce(true);
-        
-        // Add a system message to inform about the shared code
-        const systemMsg: Message = {
-          id: 'shared-code-init-' + Date.now(),
-          senderId: 'SYSTEM',
-          payload: '🛡️',
-          text: `Secure channel established using a shared code.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [systemMsg, ...prev]);
-      } catch (e) {
-      }
-    }
-  }, [sharedCode]);
-
-  const otherUserId = useMemo(() => {
-    if (!id || !user?.id) return null;
-    return id.split('_').find(uId => uId !== user.id);
-  }, [id, user?.id]);
+  }, [id, vault, conversationSalt, encryptionKey, isLocked, autoUnlockGlobal, autoUnlockConfig]);
 
   useEffect(() => {
-    const fetchTargetProfile = async () => {
-      if (!otherUserId) return;
+    const fetchConversation = async () => {
+      if (!id) return;
       try {
         const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
-        const response = await axios.get(`${API_URL}/api/users/${otherUserId}`);
-        setTargetProfile(response.data);
-        setIsOtherUserOnline(response.data.isOnline);
+        const response = await axios.get(`${API_URL}/api/conversations/${id}`);
+        const conversation = response.data.conversation;
+        setConversationSalt(conversation.keySalt);
+        setTargetProfile(conversation.participant);
+        setOtherUserId(conversation.participant?.id || null);
+        setIsOtherUserOnline(Boolean(conversation.participant?.isOnline));
       } catch (error: any) {
+        Alert.alert('Conversation unavailable', 'You no longer have access to this conversation.');
+        router.replace('/(main)/(tabs)');
       }
-      };
-      fetchTargetProfile();
-      }, [otherUserId]);
+    };
+    fetchConversation();
+  }, [id, router]);
 
   useEffect(() => {
     if (id) {
@@ -178,7 +165,7 @@ export default function ChatRoomScreen() {
       const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
       const response = await axios.get(`${API_URL}/api/messages/${id}`);
       
-      const decryptedMessages = response.data.map((msg: any) => {
+      const decryptedMessages = response.data.messages.map((msg: any) => {
         let decryptedText = undefined;
         let isOldKey = false;
         
@@ -217,7 +204,7 @@ export default function ChatRoomScreen() {
 
   useEffect(() => {
     if (socket) {
-      socket.emit('join_room', id);
+      socket.emit('join_conversation', { conversationId: id });
 
       const handleStatusChange = (data: any) => {
         if (data.userId === otherUserId) {
@@ -226,24 +213,28 @@ export default function ChatRoomScreen() {
       };
 
       const handleTyping = (data: any) => {
-        if (data.userId !== user?.id && data.roomId === id) {
+        if (data.userId !== user?.id && data.conversationId === id) {
           setIsOtherUserTyping(true);
         }
       };
 
       const handleStopTyping = (data: any) => {
-        if (data.userId !== user?.id && data.roomId === id) {
+        if (data.userId !== user?.id && data.conversationId === id) {
           setIsOtherUserTyping(false);
         }
       };
 
-      const handleMsg = (data: any) => {
-        if (data.type === 'KEY_CHANGE_REQUEST') {
-          if (data.senderId === user?.id) return; // Don't show request banner to self
+      const handleKeyRequest = (data: any) => {
+        if (data.requesterId !== user?.id && data.conversationId === id) {
           setPendingKeyRequest(data);
           setShowKeyRequest(true);
-        } else if (data.type === 'KEY_CHANGE_ACCEPTED') {
-          if (data.senderId !== user?.id && isWaitingForApproval) {
+        }
+      };
+
+      const handleKeyResponse = (data: any) => {
+        if (data.conversationId !== id) return;
+        if (data.accepted) {
+          if (data.responderId !== user?.id && isWaitingForApproval) {
             // The other person accepted my request
             setPreviousKey(encryptionKey);
             setEncryptionKey(candidateKey);
@@ -262,35 +253,37 @@ export default function ChatRoomScreen() {
             id: Date.now().toString(),
             senderId: 'SYSTEM',
             payload: '✅',
-            text: `${data.senderName} has accepted the new Secret Code.`,
+            text: `${data.responderName} has accepted the new Secret Code.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
           setMessages(prev => [...prev, systemMsg]);
-        } else if (data.type === 'KEY_CHANGE_REJECTED') {
+        } else {
           if (isWaitingForApproval) {
             setCandidateKey(null);
             setIsWaitingForApproval(false);
-            Alert.alert('Key Change Rejected', `${data.senderName} declined the key update. Continuing with previous key.`);
-          } else if (data.senderId !== user?.id && previousKey && !isWaitingForApproval) {
+            Alert.alert('Key Change Rejected', `${data.responderName} declined the key update. Continuing with previous key.`);
+          } else if (data.responderId !== user?.id && previousKey && !isWaitingForApproval) {
             // Revert to previous key if the other user cancelled after accepting
             setEncryptionKey(previousKey);
             setPreviousKey(null);
-            Alert.alert('Key Change Cancelled', `${data.senderName} cancelled the key update. Reverting to previous key.`);
+            Alert.alert('Key Change Cancelled', `${data.responderName} cancelled the key update. Reverting to previous key.`);
           }
           
           const systemMsg: Message = {
             id: Date.now().toString(),
             senderId: 'SYSTEM',
             payload: '❌',
-            text: `${data.senderName} rejected the key change request.`,
+            text: `${data.responderName} rejected the key change request.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
           setMessages(prev => [...prev, systemMsg]);
-        } else {
-          handleIncomingMessage(data);
-          // If we are in the room, mark new incoming messages as read
-          markMessagesAsRead();
         }
+      };
+
+      const handleMsg = (data: any) => {
+        if (data.conversationId !== id) return;
+        handleIncomingMessage(data);
+        markMessagesAsRead();
       };
 
       const handleDeleted = (data: { messageId: string }) => {
@@ -301,6 +294,8 @@ export default function ChatRoomScreen() {
       socket.on('user_typing', handleTyping);
       socket.on('user_stop_typing', handleStopTyping);
       socket.on('receive_message', handleMsg);
+      socket.on('key_change_requested', handleKeyRequest);
+      socket.on('key_change_responded', handleKeyResponse);
       socket.on('message_deleted', handleDeleted);
 
       return () => {
@@ -308,6 +303,8 @@ export default function ChatRoomScreen() {
         socket.off('user_typing', handleTyping);
         socket.off('user_stop_typing', handleStopTyping);
         socket.off('receive_message', handleMsg);
+        socket.off('key_change_requested', handleKeyRequest);
+        socket.off('key_change_responded', handleKeyResponse);
         socket.off('message_deleted', handleDeleted);
       };
     }
@@ -336,7 +333,7 @@ export default function ChatRoomScreen() {
     if (selectedMessage && socket) {
       socket.emit('delete_message', { 
         messageId: selectedMessage.id, 
-        roomId: id 
+        conversationId: id
       });
       setShowActionMenu(false);
       setSelectedMessage(null);
@@ -388,13 +385,7 @@ export default function ChatRoomScreen() {
       setIsRespondingToHandshake(true);
       setShowCodeModal(true);
       
-      socket?.emit('send_message', {
-        roomId: id,
-        senderId: user?.id,
-        senderName: user?.username,
-        type: 'KEY_CHANGE_ACCEPTED',
-        payload: '🤝'
-      });
+      socket?.emit('respond_key_change', { conversationId: id, accepted: true });
     } catch (error: any) {
     }
   };
@@ -404,13 +395,7 @@ export default function ChatRoomScreen() {
       setShowKeyRequest(false);
       setPendingKeyRequest(null);
       
-      socket?.emit('send_message', {
-        roomId: id,
-        senderId: user?.id,
-        senderName: user?.username,
-        type: 'KEY_CHANGE_REJECTED',
-        payload: '🚫'
-      });
+      socket?.emit('respond_key_change', { conversationId: id, accepted: false });
     } catch (error: any) {
     }
   };
@@ -431,13 +416,7 @@ export default function ChatRoomScreen() {
       }
       
       // Tell the other user we cancelled/rejected
-      socket?.emit('send_message', {
-        roomId: id,
-        senderId: user?.id,
-        senderName: user?.username,
-        type: 'KEY_CHANGE_REJECTED',
-        payload: '🚫'
-      });
+      socket?.emit('respond_key_change', { conversationId: id, accepted: false });
     }
   };
 
@@ -446,8 +425,8 @@ export default function ChatRoomScreen() {
     if (!trimmedCode) return;
     
     try {
-      const salt = 'hushhh_secret_salt'; 
-      const key = deriveKey(trimmedCode, salt);
+      if (!conversationSalt) return;
+      const key = deriveKey(trimmedCode, conversationSalt);
       
       if (!hasDerivedKeyOnce || isRespondingToHandshake) {
         // Initial unlock OR responding to an accepted handshake
@@ -477,13 +456,7 @@ export default function ChatRoomScreen() {
         setIsWaitingForApproval(true);
         setShowCodeModal(false);
         
-        socket?.emit('send_message', {
-          roomId: id,
-          senderId: user?.id,
-          senderName: user?.username,
-          type: 'KEY_CHANGE_REQUEST',
-          payload: '🔑'
-        });
+        socket?.emit('request_key_change', { conversationId: id });
       }
     } catch (error: any) {
       Alert.alert('Handshake Error', 'Secure key derivation failed. Try a different code.');
@@ -496,7 +469,7 @@ export default function ChatRoomScreen() {
     if (socket && isConnected) {
       if (!isMeTyping) {
         setIsMeTyping(true);
-        socket.emit('typing', { roomId: id });
+        socket.emit('typing', { conversationId: id });
       }
 
       if (typingTimeoutRef.current) {
@@ -504,7 +477,7 @@ export default function ChatRoomScreen() {
       }
 
       typingTimeoutRef.current = setTimeout(() => {
-        socket.emit('stop_typing', { roomId: id });
+        socket.emit('stop_typing', { conversationId: id });
         setIsMeTyping(false);
       }, 3000); 
     }
@@ -520,22 +493,21 @@ export default function ChatRoomScreen() {
 
     try {
       const securePayload = encryptMessage(inputText, encryptionKey);
-      const messageData = {
-        roomId: id,
-        senderId: user?.id,
-        payload: securePayload
-      };
-
-      socket.emit('send_message', messageData);
-      
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        senderId: user?.id!,
-        payload: securePayload,
-        text: inputText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, newMessage]);
+      const clientMessageId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+      socket.emit('send_message', { conversationId: id, payload: securePayload, clientMessageId }, (result: any) => {
+        if (!result?.ok) {
+          Alert.alert('Transmission Failed', 'Your message was not delivered. Please try again.');
+          return;
+        }
+        const saved = result.message;
+        setMessages((previous) => previous.some((message) => message.id === saved.id) ? previous : [...previous, {
+          id: saved.id,
+          senderId: saved.senderId,
+          payload: saved.payload,
+          text: inputText,
+          timestamp: new Date(saved.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      });
       setInputText('');
     } catch (error: any) {
       handleError(error, 'Transmission Failed');
@@ -653,7 +625,7 @@ export default function ChatRoomScreen() {
           <View style={[styles.requestBanner, { backgroundColor: theme.surface, borderTopWidth: 4, borderTopColor: theme.secondary }]}>
             <View style={{ flex: 1 }}>
               <Text style={styles.requestTitle}>Key Change Requested 🔑</Text>
-              <Text style={styles.requestSubtitle}>{pendingKeyRequest?.senderName} wants to update the Secret Code.</Text>
+              <Text style={styles.requestSubtitle}>{pendingKeyRequest?.requesterName} wants to update the Secret Code.</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity style={styles.rejectButton} onPress={handleRejectKeyChange}>

@@ -13,11 +13,11 @@ import { notificationState } from "../context/SocketContext";
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    const roomId = notification.request.content.data?.roomId;
+    const conversationId = notification.request.content.data?.conversationId;
     const isAppActive = AppState.currentState === 'active';
     
     // Suppress notification if we are already in the chat room and app is active
-    const shouldShow = !isAppActive || roomId !== notificationState.activeRoomId;
+    const shouldShow = !isAppActive || conversationId !== notificationState.activeRoomId;
 
     return {
       shouldShowAlert: shouldShow,
@@ -30,7 +30,7 @@ Notifications.setNotificationHandler({
 });
 
 function LockScreen() {
-  const { isBiometricEnabled, isPasscodeEnabled, appPasscode, setIsAppLocked } = useSecurity();
+  const { isBiometricEnabled, isPasscodeEnabled, verifyPasscode, unlockVault, setIsAppLocked } = useSecurity();
   const [passcodeInput, setPasscodeInput] = useState('');
   const [error, setError] = useState(false);
 
@@ -43,12 +43,14 @@ function LockScreen() {
     });
 
     if (result.success) {
+      await unlockVault();
       setIsAppLocked(false);
     }
   };
 
-  const handlePasscodeSubmit = () => {
-    if (passcodeInput === appPasscode) {
+  const handlePasscodeSubmit = async () => {
+    if (await verifyPasscode(passcodeInput)) {
+      await unlockVault();
       setIsAppLocked(false);
     } else {
       setError(true);
@@ -65,7 +67,7 @@ function LockScreen() {
 
   return (
     <View style={styles.lockContainer}>
-      <Ionicons name="shield-lock" size={80} color="#FF6B6B" />
+      <Ionicons name="shield-checkmark" size={80} color="#FF6B6B" />
       <Text style={styles.lockTitle}>Hush Locked</Text>
       
       {isPasscodeEnabled && (
@@ -103,7 +105,7 @@ function LockScreen() {
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  const { isAppLocked, setIsAppLocked, isBiometricEnabled, isPasscodeEnabled } = useSecurity();
+  const { isAppLocked, setIsAppLocked, isBiometricEnabled, isPasscodeEnabled, lockVault } = useSecurity();
   const segments = useSegments();
   const router = useRouter();
   const appState = useRef(AppState.currentState);
@@ -115,6 +117,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
         nextAppState === 'active'
       ) {
         if (isBiometricEnabled || isPasscodeEnabled) {
+          lockVault();
           setIsAppLocked(true);
         }
       }
@@ -124,7 +127,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.remove();
     };
-  }, [isBiometricEnabled, isPasscodeEnabled]);
+  }, [isBiometricEnabled, isPasscodeEnabled, lockVault, setIsAppLocked]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -134,7 +137,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     if (!user && !inAuthGroup) {
       router.replace("/(auth)/login");
     } else if (user && inAuthGroup) {
-      router.replace("/(main)");
+      router.replace("/(main)/(tabs)");
     }
   }, [user, isLoading, segments]);
 

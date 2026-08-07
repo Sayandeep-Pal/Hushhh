@@ -1,6 +1,8 @@
 # (✯‿✯) Hushhh
  
-**Hushhh** is a privacy-first, end-to-end encrypted (E2EE) messaging application designed for absolute stealth. Beyond standard encryption, it employs **Stealth Steganography** to hide encrypted payloads within seemingly innocent emoji icons, making your secure conversations invisible to shoulder-surfers and server-side analysis.
+> **Prototype notice:** Hushhh is under active security revision and is not ready for sensitive conversations or public security claims. Do not rely on it for safety-critical or confidential communication.
+
+**Hushhh** is an encrypted-chat prototype with a playful zero-width visual-obfuscation transport. The current focus is authenticated identities, conversation authorization, authenticated message envelopes, and native vault protection.
 
 --- 
 
@@ -18,13 +20,13 @@
 
 ## ✨ Key Features
 
-- **🔐 True E2EE:** Messages are encrypted/decrypted only on your device. The server never sees your "Secret Code".
-- **👻 Stealth Steganography:** Encrypted data is converted to zero-width Unicode characters and hidden behind "carrier" emojis (e.g., `(✯‿✯)`).
+- **🔐 Local payload encryption:** Message content is encrypted on the device before relay.
+- **👻 Visual obfuscation:** Encrypted data can be converted to zero-width Unicode characters behind carrier icons (e.g., `(✯‿✯)`). This is not metadata protection.
 - **🗄️ Secret Vault:** Securely store and manage your chat keys locally, protected by biometric or passcode authentication.
 - **⚡ Auto-Unlock:** Stay in the flow with configurable auto-unlock timers (5m, 30m, 1h, etc.) for trusted contacts.
 - **🎭 Anonymous Identities:** No phone numbers or emails. Create a codename and jump into a chat.
 - **🤝 Dynamic Handshake:** Change Secret Codes mid-conversation with a real-time acceptance/rejection flow.
-- **📱 Deep Linking & QR:** Share your identity via custom `hushhh://` links or QR codes.
+- **📱 One-time invites:** Share a short-lived, opaque connection invite via custom `hushhh://` links or QR codes; invite links never include a Secret Code.
 - **⚡ Real-time Presence:** See when friends are online or typing.
 - **🔔 Push Notifications:** Get notified of new messages even when the app is closed (supported via Expo).
 - **🎨 Custom Theme System:** Vibrant, playful UI with full support for system dark/light modes.
@@ -34,10 +36,10 @@
 ## (✯‿✯) Security Deep Dive
 
 ### 1. Key Derivation (PBKDF2)
-When you enter a Secret Code, the client derives a 256-bit AES key using **PBKDF2** with 1,000 iterations and a local salt. This ensures that even weak codes are resistant to basic brute-force attacks.
+When you enter a Secret Code, the client derives separate encryption and authentication keys using **PBKDF2-SHA256** with 310,000 iterations and a random per-conversation salt. Secret Codes should be high entropy and shared out-of-band.
 
-### 2. AES-256-CBC Encryption
-Messages are encrypted using AES-256-CBC. A unique IV (Initialization Vector) is generated for every single message via `expo-crypto` to ensure that identical messages produce different ciphertexts.
+### 2. Authenticated message envelope
+Messages use a unique IV and an encrypt-then-MAC envelope while the project migrates to an audited AEAD protocol. This is transitional work, not a substitute for an independently reviewed messaging protocol.
 
 ### 3. Zero-Width Encoding
 This is where the magic happens. The ciphertext is converted into a binary stream, which is then mapped to invisible Unicode characters:
@@ -45,7 +47,7 @@ This is where the magic happens. The ciphertext is converted into a binary strea
 - `1` ➔ `\u200C` (Zero Width Non-Joiner)
 - `Separator` ➔ `\u200D` (Zero Width Joiner)
 
-The result is appended to a visible carrier icon. On the screen, you see `(✯‿✯)`, but the app "sees" the hidden payload.
+The result is appended to a visible carrier icon. This changes presentation only; servers still observe timing, participants, payload size, and other operational metadata.
 
 ---
 

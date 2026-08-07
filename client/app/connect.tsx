@@ -3,9 +3,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { Alert, View, ActivityIndicator } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
+import axios from 'axios';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.17.0.1:3000';
 
 export default function Connect() {
-  const { id, name, code } = useLocalSearchParams<{ id: string, name?: string, code?: string }>();
+  const { invite } = useLocalSearchParams<{ invite?: string }>();
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const theme = useTheme();
@@ -13,36 +16,25 @@ export default function Connect() {
   useEffect(() => {
     if (isLoading) return;
 
-    if (!user) {
-      // If not logged in, the NavigationGuard will redirect to login.
-      // But we should probably redirect back here after login.
-      // For now, let's just go to main.
-      router.replace('/(main)');
+    if (!user || !invite) {
+      router.replace('/(auth)/login');
       return;
     }
-
-    if (id) {
-      if (id === user.id) {
-        Alert.alert('Mirror Reality', "You can't chat with yourself.");
-        router.replace('/(main)');
-        return;
+    const acceptInvite = async () => {
+      try {
+        const response = await axios.post(`${API_URL}/api/invites/accept`, { token: invite });
+        const conversation = response.data.conversation;
+        router.replace({
+          pathname: '/(main)/chat/[id]',
+          params: { id: conversation.id, name: conversation.participant?.username || 'Secure Chat' },
+        });
+      } catch {
+        Alert.alert('Invite unavailable', 'This connection invite is invalid, expired, or has already been used.');
+        router.replace('/(main)/(tabs)');
       }
-
-      const roomId = [user.id, id].sort().join('_');
-      
-      // Redirect to the chat room with the provided parameters
-      router.replace({
-        pathname: '/(main)/chat/[id]',
-        params: {
-          id: roomId,
-          name: name || 'Secret Agent',
-          sharedCode: code || ''
-        }
-      });
-    } else {
-      router.replace('/(main)');
-    }
-  }, [id, user, isLoading]);
+    };
+    acceptInvite();
+  }, [invite, user, isLoading, router]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }}>

@@ -3,7 +3,7 @@ const User = require('../models/User');
 
 const expo = new Expo();
 
-const sendPushNotification = async (userId, senderUsername, roomId) => {
+const sendPushNotification = async (userId, senderUsername, conversationId) => {
   try {
     const user = await User.findById(userId);
     if (!user || !user.pushToken) return;
@@ -18,7 +18,7 @@ const sendPushNotification = async (userId, senderUsername, roomId) => {
       sound: 'default',
       title: 'New Secure Message (✯‿✯)',
       body: `${senderUsername} sent you a message`,
-      data: { senderUsername, roomId },
+      data: { senderUsername, conversationId },
       priority: 'high',
       badge: 1,
     }];

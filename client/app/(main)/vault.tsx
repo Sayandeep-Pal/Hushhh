@@ -10,7 +10,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { Avatar } from '../../components/Avatar';
 
 export default function VaultScreen() {
-  const { vault, isBiometricEnabled, isPasscodeEnabled } = useSecurity();
+  const { vault, isBiometricEnabled, isPasscodeEnabled, unlockVault } = useSecurity();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -31,6 +31,7 @@ export default function VaultScreen() {
       });
 
       if (result.success) {
+        await unlockVault();
         setIsAuthenticated(true);
       }
     } catch (error) {
@@ -58,7 +59,7 @@ export default function VaultScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.replace('/(main)')} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.replace('/(main)/(tabs)')} style={styles.backButton}>
             <Ionicons name="chevron-back" size={28} color={theme.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Secret Vault</Text>
@@ -85,7 +86,7 @@ export default function VaultScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.replace('/(main)')} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.replace('/(main)/(tabs)')} style={styles.backButton}>
             <Ionicons name="chevron-back" size={28} color={theme.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Secret Vault</Text>
@@ -118,7 +119,7 @@ export default function VaultScreen() {
           if (router.canGoBack()) {
             router.back();
           } else {
-            router.replace('/(main)');
+            router.replace('/(main)/(tabs)');
           }
         }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color={theme.text} />
