@@ -3,16 +3,109 @@ const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 
 const validation = require('../utils/validation');
+const User = require('../models/User');
 const { directKeyFor, conversationRoom, userRoom } = require('../utils/conversations');
 const { signAccessToken, verifyAccessToken, JWT_AUDIENCE, JWT_ISSUER } = require('../middleware/authMiddleware');
 const Message = require('../models/Message');
 const { parseLegacyRoomId, legacyClientMessageId } = require('../scripts/migrate-legacy-data');
 const { createRateLimiter } = require('../middleware/rateLimit');
+const authController = require('../controllers/authController');
+const RefreshSession = require('../models/RefreshSession');
+const {
+  createRefreshToken,
+  hashRefreshToken,
+  isValidRefreshToken,
+  refreshTokenExpiry,
+  REFRESH_TOKEN_TTL_MS,
+} = require('../utils/refreshTokens');
 
 test('registration credentials require exactly 256 bits of hexadecimal entropy', () => {
   assert.equal(validation.isValidDeviceSecret('a'.repeat(64)), true);
   assert.equal(validation.isValidDeviceSecret('a'.repeat(63)), false);
   assert.equal(validation.isValidDeviceSecret('z'.repeat(64)), false);
+  assert.equal(validation.isValidDeviceId('b'.repeat(64)), true);
+  assert.equal(validation.isValidDeviceId('short-device-id'), false);
+});
+
+test('refresh tokens are opaque, hashable, and have a bounded expiry', () => {
+  const token = createRefreshToken();
+  assert.equal(isValidRefreshToken(token), true);
+  assert.equal(isValidRefreshToken(`${token}=`), false);
+  assert.match(hashRefreshToken(token), /^[a-f0-9]{64}$/);
+  assert.notEqual(hashRefreshToken(token), token);
+  const now = new Date('2026-01-01T00:00:00.000Z');
+  assert.equal(refreshTokenExpiry(now).getTime() - now.getTime(), REFRESH_TOKEN_TTL_MS);
+});
+
+test('refresh sessions persist only token hashes and support server-side revocation', () => {
+  const paths = RefreshSession.schema.paths;
+  assert.ok(paths.tokenHash);
+  assert.ok(paths.deviceId);
+  assert.ok(paths.revokedAt);
+  assert.ok(paths.replacedByHash);
+  assert.ok(paths.expiresAt);
+  const hasDeviceIndex = RefreshSession.schema.indexes().some(([spec]) => (
+    spec.userId === 1 && spec.deviceId === 1 && spec.revokedAt === 1
+  ));
+  assert.equal(hasDeviceIndex, true);
+});
+
+test('refresh endpoint rotates a token once and persists only the replacement hash', async () => {
+  const oldRefreshToken = createRefreshToken();
+  const oldHash = hashRefreshToken(oldRefreshToken);
+  const userId = '507f1f77bcf86cd799439011';
+  const deviceId = 'c'.repeat(64);
+  const originalFindOneAndUpdate = RefreshSession.findOneAndUpdate;
+  const originalCreate = RefreshSession.create;
+  const originalFindById = User.findById;
+  let oldTokenActive = true;
+  let persistedReplacement = null;
+
+  RefreshSession.findOneAndUpdate = async (filter, update) => {
+    assert.equal(filter.tokenHash, oldHash);
+    assert.equal(filter.revokedAt, null);
+    assert.ok(filter.expiresAt.$gt instanceof Date);
+    assert.ok(update.$set.replacedByHash);
+    if (!oldTokenActive) return null;
+    oldTokenActive = false;
+    return { userId, deviceId, sessionVersion: 4 };
+  };
+  RefreshSession.create = async (session) => { persistedReplacement = session; return session; };
+  User.findById = async () => ({
+    _id: { toString: () => userId },
+    sessionVersion: 4,
+    username: 'Agent#1234',
+    avatarSeed: 'Agent',
+    requiresReRegistration: false,
+  });
+
+  const response = () => {
+    const result = { statusCode: 200, body: null };
+    const res = {
+      result,
+      status: (code) => { result.statusCode = code; return res; },
+      json: (body) => { result.body = body; return res; },
+    };
+    return res;
+  };
+
+  try {
+    const first = response();
+    await authController.refresh({ body: { refreshToken: oldRefreshToken } }, first);
+    assert.equal(first.result.statusCode, 200);
+    assert.notEqual(first.result.body.refreshToken, oldRefreshToken);
+    assert.equal(hashRefreshToken(first.result.body.refreshToken), persistedReplacement.tokenHash);
+    assert.equal(persistedReplacement.deviceId, deviceId);
+    assert.equal(persistedReplacement.sessionVersion, 4);
+
+    const replay = response();
+    await authController.refresh({ body: { refreshToken: oldRefreshToken } }, replay);
+    assert.equal(replay.result.statusCode, 401);
+  } finally {
+    RefreshSession.findOneAndUpdate = originalFindOneAndUpdate;
+    RefreshSession.create = originalCreate;
+    User.findById = originalFindById;
+  }
 });
 
 test('user search and message fields are bounded and normalized', () => {

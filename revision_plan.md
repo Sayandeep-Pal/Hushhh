@@ -11,6 +11,7 @@ The current product encrypts message content locally, but it does not reliably a
 The following baseline changes are implemented in the current working tree and covered by static/unit checks:
 
 - Device-held high-entropy credentials replace user-ID-only login; access JWTs are issuer/audience-bound, short-lived, and revocable through a session version.
+- Refresh sessions are opaque random values stored only in protected client storage; the server stores SHA-256 hashes, rotates them atomically, and supports current-device and global revocation.
 - Direct conversations now have explicit membership records; history, read state, sockets, typing, send, and deletion require membership.
 - Sockets reject missing/invalid tokens, derive the sender from the session, validate payloads, use private room namespaces, and acknowledge message persistence.
 - Invite URLs contain only a short-lived, one-time opaque token; Secret Codes are removed from links and QR payloads.
@@ -20,7 +21,7 @@ The following baseline changes are implemented in the current working tree and c
 - A dry-run-first legacy MongoDB migration tool revokes old identities, converts valid old rooms to explicit conversations, and reports malformed/orphaned records instead of guessing.
 - Server unit tests, client typecheck, web lint/build, and a CI workflow have been added.
 
-The following remain release blockers and require further implementation and/or outside authority: deployment secret rotation, execution of the reviewed legacy MongoDB migration, production CORS/origin configuration, refresh-token/device-key protocol, a reviewed AEAD/ratchet protocol, Redis-backed multi-instance state, mobile end-to-end tests, and independent security review. Do not mark the production launch checklist complete until these are finished.
+The following remain release blockers and require further implementation and/or outside authority: deployment secret rotation, execution of the reviewed legacy MongoDB migration, production CORS/origin configuration, an audited device-key challenge-response protocol, a reviewed AEAD/ratchet protocol, Redis-backed multi-instance state, mobile end-to-end tests, and independent security review. Do not mark the production launch checklist complete until these are finished.
 
 ### Non-negotiable release gates
 
@@ -97,7 +98,7 @@ Use anonymous, device-bound public-key identities:
 - [ ] Create an `Identity`/`User` schema with immutable `id`, `publicSigningKey`, normalized unique handle, key version, timestamps, and token-revocation metadata.
 - [ ] Verify request signatures, nonce freshness, expiration, audience, and replay protection.
 - [ ] Sign access JWTs with `iss`, `aud`, `iat`, `exp`, and `jti`; use a short access-token lifetime and rotating refresh tokens.
-- [ ] Store refresh tokens hashed; support individual-device and global revocation.
+- [x] Store refresh tokens hashed; support individual-device and global revocation. (Rotating refresh records are device-scoped; a device sign-out revokes its record and global sign-out revokes all records.)
 - [ ] Validate display name, avatar seed, and every request body with a schema validator.
 - [ ] Add exact case-insensitive handle uniqueness and safe search normalization.
 - [ ] Remove all default credentials and all code paths that mint a token from a user ID.
