@@ -30,7 +30,7 @@ Notifications.setNotificationHandler({
 });
 
 function LockScreen() {
-  const { isBiometricEnabled, isPasscodeEnabled, verifyPasscode, unlockVault, setIsAppLocked } = useSecurity();
+  const { isBiometricEnabled, isPasscodeEnabled, unlockVaultWithPasscode, unlockVaultWithBiometrics, setIsAppLocked } = useSecurity();
   const [passcodeInput, setPasscodeInput] = useState('');
   const [error, setError] = useState(false);
 
@@ -43,14 +43,17 @@ function LockScreen() {
     });
 
     if (result.success) {
-      await unlockVault();
-      setIsAppLocked(false);
+      try {
+        await unlockVaultWithBiometrics();
+        setIsAppLocked(false);
+      } catch {
+        setError(true);
+      }
     }
   };
 
   const handlePasscodeSubmit = async () => {
-    if (await verifyPasscode(passcodeInput)) {
-      await unlockVault();
+    if (await unlockVaultWithPasscode(passcodeInput)) {
       setIsAppLocked(false);
     } else {
       setError(true);

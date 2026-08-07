@@ -4,48 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { useSecurity } from '../../context/SecurityContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Avatar } from '../../components/Avatar';
 
 export default function VaultScreen() {
-  const { vault, isBiometricEnabled, isPasscodeEnabled, unlockVault } = useSecurity();
+  const { vault, isBiometricEnabled, isPasscodeEnabled } = useSecurity();
   const router = useRouter();
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isAuthenticated] = useState(true);
 
   const isSecurityEnabled = isBiometricEnabled || isPasscodeEnabled;
-
-  const authenticate = async () => {
-    if (!isSecurityEnabled) return;
-    
-    setIsAuthenticating(true);
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock Secret Vault',
-        fallbackLabel: 'Use App Passcode',
-      });
-
-      if (result.success) {
-        await unlockVault();
-        setIsAuthenticated(true);
-      }
-    } catch (error) {
-      Alert.alert('Authentication Error', 'Could not verify identity.');
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isSecurityEnabled) {
-      authenticate();
-    }
-  }, [isSecurityEnabled]);
 
   const copyToClipboard = async (code: string, id: string) => {
     await Clipboard.setStringAsync(code);
@@ -100,11 +71,10 @@ export default function VaultScreen() {
           </Text>
           <TouchableOpacity 
             style={styles.unlockButton}
-            onPress={authenticate}
-            disabled={isAuthenticating}
+            onPress={() => router.replace('/(main)/(tabs)')}
           >
             <Text style={styles.unlockButtonText}>
-              {isAuthenticating ? 'Verifying...' : 'Unlock Vault'}
+              Unlock from the app lock screen
             </Text>
           </TouchableOpacity>
         </View>

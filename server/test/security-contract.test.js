@@ -6,6 +6,8 @@ const validation = require('../utils/validation');
 const { directKeyFor, conversationRoom, userRoom } = require('../utils/conversations');
 const { signAccessToken, verifyAccessToken, JWT_AUDIENCE, JWT_ISSUER } = require('../middleware/authMiddleware');
 const Message = require('../models/Message');
+const { parseLegacyRoomId, legacyClientMessageId } = require('../scripts/migrate-legacy-data');
+const { createRateLimiter } = require('../middleware/rateLimit');
 
 test('registration credentials require exactly 256 bits of hexadecimal entropy', () => {
   assert.equal(validation.isValidDeviceSecret('a'.repeat(64)), true);
@@ -57,4 +59,35 @@ test('messages persist deletion and idempotency fields', () => {
     spec.senderId === 1 && spec.clientMessageId === 1 && options.unique
   ));
   assert.equal(hasIdempotencyIndex, true);
+});
+
+test('legacy migration accepts only canonical two-user room identifiers', () => {
+  const first = '507f1f77bcf86cd799439011';
+  const second = '507f1f77bcf86cd799439012';
+  assert.deepEqual(parseLegacyRoomId(`${first}_${second}`), [first, second]);
+  assert.equal(parseLegacyRoomId(`${first}_${first}`), null);
+  assert.equal(parseLegacyRoomId('not-a-room'), null);
+  assert.equal(legacyClientMessageId('507f1f77bcf86cd799439013'), 'legacy_507f1f77bcf86cd799439013');
+});
+
+test('rate limits return 429 after the configured request budget', () => {
+  const testKey = `test-${Date.now()}`;
+  const limiter = createRateLimiter({ windowMs: 60_000, max: 2, key: () => testKey });
+  const run = () => {
+    const response = { headers: {}, statusCode: 200, body: null };
+    const res = {
+      set: (name, value) => { response.headers[name] = value; },
+      status: (code) => { response.statusCode = code; return res; },
+      json: (body) => { response.body = body; return res; },
+    };
+    let continued = false;
+    limiter({ ip: '127.0.0.1' }, res, () => { continued = true; });
+    return { response, continued };
+  };
+  assert.equal(run().continued, true);
+  assert.equal(run().continued, true);
+  const limited = run();
+  assert.equal(limited.continued, false);
+  assert.equal(limited.response.statusCode, 429);
+  assert.match(limited.response.body.error, /Too many requests/);
 });

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "NODE_ENV=test JWT_SECRET=hushhh-test-secret node test/security-contract.test.js"
+    "test": "NODE_ENV=test JWT_SECRET=hushhh-test-secret node test/security-contract.test.js",
+    "migrate:legacy": "node scripts/migrate-legacy-data.js"
   },
   "keywords": [],
   "author": "",

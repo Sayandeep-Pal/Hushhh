@@ -50,7 +50,7 @@ exports.createSession = async (req, res) => {
 
   try {
     const user = await User.findById(userId).select('+credentialHash');
-    if (!user || !user.credentialHash || !(await bcrypt.compare(deviceSecret, user.credentialHash))) {
+    if (!user || user.requiresReRegistration || !user.credentialHash || !(await bcrypt.compare(deviceSecret, user.credentialHash))) {
       return res.status(401).json({ error: 'Invalid identity credentials' });
     }
     return res.json({ token: signAccessToken(user), user: serializeUser(user) });

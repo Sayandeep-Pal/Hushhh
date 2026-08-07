@@ -64,7 +64,13 @@ export default function SettingsScreen() {
           { 
             text: 'Disable', 
             style: 'destructive', 
-            onPress: () => setPasscode(null) 
+            onPress: async () => {
+              try {
+                await setPasscode(null);
+              } catch (error: any) {
+                Alert.alert('Passcode required', error.message || 'Enable biometric protection before disabling the passcode.');
+              }
+            }
           }
         ]
       );
@@ -243,7 +249,7 @@ export default function SettingsScreen() {
             <Text style={styles.formTitle}>Set App Passcode</Text>
             <TextInput
               style={styles.input}
-              placeholder="New Passcode (4-6 digits)"
+              placeholder="New Passcode (6 digits)"
               placeholderTextColor={theme.textTertiary}
               value={newPasscode}
               onChangeText={setNewPasscode}

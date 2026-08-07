@@ -16,9 +16,11 @@ The following baseline changes are implemented in the current working tree and c
 - Invite URLs contain only a short-lived, one-time opaque token; Secret Codes are removed from links and QR payloads.
 - New envelopes use per-conversation salts, strengthened PBKDF2 derivation, and encrypt-then-MAC authentication while the project migrates to a reviewed AEAD/protocol solution.
 - Plaintext app-passcode storage is removed; vault contents are no longer eagerly loaded before a protected session unlocks; active chat keys are cleared when the app backgrounds.
+- Vault contents now use an authenticated encrypted envelope. Its random vault key is wrapped by the app passcode and/or a biometric-protected SecureStore entry; legacy plaintext vault data is migrated only after a successful unlock.
+- A dry-run-first legacy MongoDB migration tool revokes old identities, converts valid old rooms to explicit conversations, and reports malformed/orphaned records instead of guessing.
 - Server unit tests, client typecheck, web lint/build, and a CI workflow have been added.
 
-The following remain release blockers and require further implementation and/or outside authority: deployment secret rotation, legacy MongoDB identity/message migration, production CORS/origin configuration, refresh-token/device-key protocol, a reviewed AEAD/ratchet protocol, encrypted passcode-only vault storage, Redis-backed multi-instance state, mobile end-to-end tests, and independent security review. Do not mark the production launch checklist complete until these are finished.
+The following remain release blockers and require further implementation and/or outside authority: deployment secret rotation, execution of the reviewed legacy MongoDB migration, production CORS/origin configuration, refresh-token/device-key protocol, a reviewed AEAD/ratchet protocol, Redis-backed multi-instance state, mobile end-to-end tests, and independent security review. Do not mark the production launch checklist complete until these are finished.
 
 ### Non-negotiable release gates
 
